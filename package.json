@@ -1,16 +1,35 @@
 {
-	"name": "NodejsStarterApp",
-	"version": "0.0.1",
-	"description": "A sample nodejs app for Bluemix",
-	"scripts": {
-		"start": "node app.js"
-	},
-	"dependencies": {
-		"express": "4.12.x",
-		"cfenv": "1.0.x"
-	},
-	"repository": {},
-	"engines": {
-		"node": "0.12.x"
-	} 
+  "name": "oslc-client",
+  "main": "./index.js",
+  "description": "Fast, open framework for service integration",
+  "version": "0.0.1",
+  "author": {
+    "name": "Jim Amsden",
+    "email": "jamsden@us.ibm.com"
+  },
+  "contributors": [
+    {
+      "name": "Jim Ruehlin",
+      "email": "jruehlin@us.ibm.com"
+    }
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://hub.jass.net/git/jamsden/oslc.git"
+  },
+  "homepage": "http://open-services.net/",
+  "keywords": [
+    "oslc",
+    "ldp",
+    "domain",
+    "web",
+    "rest",
+    "restful"
+  ],
+  "dependencies": {
+    "jsonld": "^0.4.2",
+    "rdflib": "^0.2.10",
+    "request": "~2.60.0"
+  }
 }

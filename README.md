@@ -1,17 +1,6 @@
-This README.md file is displayed on your project page. You should edit this 
-file to describe your project, including instructions for building and 
-running the project, pointers to the license under which you are making the 
-project available, and anything else you think would be useful for others to
-know.
+# oslc-client
+An OSLC client API Node.js module
 
-We have created an empty license.txt file for you. Well, actually, it says,
-"<Replace this text with the license you've chosen for your project.>" We 
-recommend you edit this and include text for license terms under which you're
-making your code available. A good resource for open source licenses is the 
-[Open Source Initiative](http://opensource.org/).
+oslc-client is a JavaScript Node.js module supporting OSLC client and server development. The client API exposes the OSLC core and domain capabilities through a simple JavaScript API on the OSLC REST services. The same API may also represent an abstract implementation of a server supporting OSLC core capabilities and domains. See oslc-server for an implementation of the OSLC REST services that delegate to this API which can then be adapted to existing data sources, services and OSLC domains.
 
-Be sure to update your project's profile with a short description and 
-eye-catching graphic.
-
-Finally, consider defining some sprints and work items in Track & Plan to give 
-interested developers a sense of your cadence and upcoming enhancements.
+oslc-client exploits the dynamic and asynchronous capabilities of JavaScript and Node.js to build and API that can easily adapt to any OSLC domain, extensions to domains, and/or integrations between domains. 
