@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+ "use strict";
+
 var rdflib = require('rdflib');
 
 // Define some useful namespaces
@@ -31,13 +33,15 @@ var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#');
 var OSLCCM10 = rdflib.Namespace('http://open-services.net/xmlns/cm/1.0/');
 var JD = rdflib.Namespace('http://jazz.net/xmlns/prod/jazz/discovery/1.0/')
 
-// Encapsulates a OSLC ServiceProvider resource as in-memroy RDF knowledge base
-// This is an asynchronous constructor. The callback is called when the ServiceProvider
-// has discovered all its services
-// @uri: the URI of the ServiceProvider
-// @request: for making HTTP requests 
-// @callback(err, serviceProvider): called with the newly constructed and populated service provider
-
+/** Encapsulates a OSLC ServiceProvider resource as in-memroy RDF knowledge base
+ * This is an asynchronous constructor. The callback is called when the ServiceProvider
+ * has discovered all its services
+ * @class
+ * @constructor
+ * @param {!URI} uri - the URI of the ServiceProvider
+ * @param {request} request - for making HTTP requests 
+ * @param callback(err, serviceProvider) - called with the newly constructed and populated service provider
+ */
 function ServiceProvider(uri, request, callback) {
 	// Parse the RDF source into an internal representation for future use
 	var _self = this;
@@ -57,7 +61,7 @@ function ServiceProvider(uri, request, callback) {
 
 ServiceProvider.prototype.queryBase = function() {
 	var result = null;
-	for (s in this.service) {
+	for (var s in this.service) {
 		if (this.service[s].domain === OSLCCM().uri && this.service[s].queryCapability) {
 			result = this.service[s].queryCapability.queryBase;
 			break;
@@ -66,18 +70,18 @@ ServiceProvider.prototype.queryBase = function() {
 	return result;
 }
 
-// Introspect an RDF object's properties and values, and put them
-// into the JavaScript object
-//
-// @kb: the rdflib IndexedFormula that contains the RDF graph
-// @subject: the RDF object (an rdflib sym)
-// @jObject: a JavaScript object that will get the discovered properties
-// @return: true if the properties were filled in, false if the subject is an external reference
-//
+/** Introspect an RDF object's properties and values, and put them
+ * into the JavaScript object
+ *
+ * @param kb - the rdflib IndexedFormula that contains the RDF graph
+ * @param subject - the RDF object (an rdflib sym)
+ * @param {Object} jObject - a JavaScript object that will get the discovered properties
+ * @returns {Boolean} true if the properties were filled in, false if the subject is an external reference
+ */
 rdflib.fromRDF = function (kb, subject, jObject) {
 	var props = kb.statementsMatching(subject, undefined, undefined);
 	if (props.length === 0) return false;
-	for (p in props) {
+	for (var p in props) {
 		var prop = props[p].predicate.uri.replace(/.*(#|\/)/, '');
 		var multiValued = false;
 		if (jObject[prop] !== undefined) {

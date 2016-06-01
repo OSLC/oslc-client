@@ -14,15 +14,12 @@
  * limitations under the License.
  */
 
-/**
- * server is a JavaScript Node.js API for accessing OSLC resources. It provides a
- * convenient JavaScript interface to OSLC REST services, with all resources handled
- * using JSON-LD.
- */
+"use strict";
+
 
 var request = require('request').defaults({
 	headers: {
-		'Accept': 'application/rdf+xml',
+		'Accept': 'application/rdf+xml',  // reliably available RDF representation
 		'OSLC-Core-Version': '2.0'
 	},
 	strictSSL: false,  		  // no need for certificates
@@ -56,9 +53,12 @@ var DCTERMS = rdflib.Namespace('http://purl.org/dc/terms/');
  */
 
 /**
- * Construct a generic OSLC server that can be used on any OSLC domain
+ * The root of a JavaScript Node.js API for accessing OSLC resources. It provides a
+ * convenient JavaScript interface to OSLC REST services, with all resources handled
+ * using JSON-LD. This function construct a generic OSLC server that can be used on any OSLC domain.
+ * @class
  * @constructor
- * @param {URI} servierURI - the server URI
+ * @param {!URI} serverURI - the server URI
  * @property {URI} serverURI - the URI of the OSLC server being accessed
  * @property {string} userName - the user name or authentication ID of the user
  * @property {string} password - the user's password credentials
@@ -77,12 +77,29 @@ function OSLCServer(serverURI) {
 	this.serviceProvider = null;  
 }
 
+/** OSLCServer functions are all asynchronous and use a consistent callback
+ * which provides error status information from the function. This function
+ * has no return value, only a status.
+ *
+ * @callback OSLCServer~noResultCallback
+ * @param {string} err - the error message if any
+ */
+
+/** OSLCServer functions are all asynchronous and use a consistent callback
+ * which provides error status information from the function. This function
+ * has an asynchronous result
+ *
+ * @callback OSLCServer~resultCallback
+ * @param {string} err - the error message if any
+ * @param {Object} result - the asynchronous function return value
+ */
+
 /**
  * Connect to the server with the given credentials
  *
- * @param {string} userName - the user name or authentication ID of the user
- * @param {string} password - the user's password credentials
- * @param callback(err) - called when the connection is established
+ * @param {!string} userName - the user name or authentication ID of the user
+ * @param {!string} password - the user's password credentials
+ * @param {OSLCServer~noResultCallback} callback - called when the connection is established
  */
 OSLCServer.prototype.connect = function(userName, password, callback) {
 	var _self = this; // needed to refer to this inside nested callback functions
@@ -119,8 +136,8 @@ OSLCServer.prototype.connect = function(userName, password, callback) {
  * Set the OSLCServer context to use the given ServiceProvider (e.g., project area).
  * After this call, all the Services for the ServiceProvider are known.
  *
- * @param {URI} providerContainerName - the ServiceProvider or LDP Container (e.g., project area) name
- * @param callback(err) - called when the context is set to the service provider
+ * @param {!URI} providerContainerName - the ServiceProvider or LDP Container (e.g., project area) name
+ * @param {OSLCServer~noResultCallback} callback - called when the context is set to the service provider
  */
 OSLCServer.prototype.use = function(providerContainerName, callback) {
 	var _self = this;
@@ -136,9 +153,9 @@ OSLCServer.prototype.use = function(providerContainerName, callback) {
 /**
  * Create a new OSLC resource
  *
- * @param callback(err, result) - callback with an error or the created resource
+ * @param {OSLCServer~resultCallback} callback - callback with an error or the created resource
  */
-OSLCServer.prototype.create = function(err, callback) {
+OSLCServer.prototype.create = function(callback) {
 	// TODO: complete the create function
 }
 
@@ -146,7 +163,7 @@ OSLCServer.prototype.create = function(err, callback) {
  * Read or GET all the properties of a specific OSLC resource
  *
  * @param {string} resourceID - the OSLC resource ID
- * @param callback(err, result) - callback with an error or the read OSLCResource
+ * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
  */
 OSLCServer.prototype.read = function(resourceID, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
@@ -165,7 +182,7 @@ OSLCServer.prototype.read = function(resourceID, callback) {
  * Update an OSLCResource
  * 
  * @param {string} resourceID - the change request ID
- * @param callback(err) - callback with a potential error
+ * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
 OSLCServer.prototype.update = function(resourceID, callback) {
 	// Convert the OSLC Resource into an RDF/XML resource and PUT to the server
@@ -175,8 +192,8 @@ OSLCServer.prototype.update = function(resourceID, callback) {
 /**
  * Delete an OSLCResource
  *
- * @param resourceID - the OSLC Resource ID
- * @param callback(err): callback with a potential error
+ * @param {!string} resourceID - the OSLC Resource ID
+ * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
 OSLCServer.prototype.delete = function(resourceID, callback) {
 	// TODO: complete the delete function
@@ -185,18 +202,16 @@ OSLCServer.prototype.delete = function(resourceID, callback) {
 /**
  * Execute an OSLC query on server resources (e.g., ChangeRequests)
  * 
- * @param options: options for the query. An object of the form:
- *   {prefexes: 'prefix=<URI>,...',   - a list of namespace prefixes and URIs to resolve prefexes in the query
- *    select: '*',  - a list of resource properties to return
- *    where: 'property=value',  - what resources to return
- * 	  orderBy: '+property'     - what properties and order to sort the result
- *  }
- *
  * A query with only a where clause returns a list of matching members URIs
  * A query with a select clause returns the matching members and the
  * RDF representation of the resource including the selected properties.
  *
- * @param callback(err, result) - called with the query results
+ * @param {Object} options - options for the query. An object of the form:
+ * @param {string} options.prefix - 'prefix=<URI>,...', a list of namespace prefixes and URIs to resolve prefexes in the query
+ * @param {string} options.select - '*', a list of resource properties to return
+ * @param {string} options.where - 'property=value', what resources to return
+ * @param {string} options.orderBy - '+property', what properties and order to sort the result
+ * @param {OSLCServer~resultCallback} callback - called with the query results
  */
 OSLCServer.prototype.query = function(options, callback) {
 	// execute the query

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+"use strict";
 
 /** This is a generic OSLC resource. Properties for
  * a particular domain resource will be added dynamically

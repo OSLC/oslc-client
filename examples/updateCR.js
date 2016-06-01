@@ -1,9 +1,11 @@
-// This is the same example as 
-// A simple example OSLC client application that demonstrates how to utilize
-// typical OSLC integration capabilities for doing CRUD operations on resource.
-// The example is based on the OSLC Workshop example at:
-// /Users/jamsden/Documents/workspace/net.jazz.oslc.consumer.oslc4j.cm.client
-// Example04.java, but in JavaScript and using Node.js and a prototype of oslc.js
+/** This is the same example as 
+ * A simple example OSLC client application that demonstrates how to utilize
+ * typical OSLC integration capabilities for doing CRUD operations on resource.
+ * The example is based on the OSLC Workshop example at:
+ * /Users/jamsden/Documents/workspace/net.jazz.oslc.consumer.oslc4j.cm.client
+ * Example04.java, but in JavaScript and using Node.js and a prototype of oslc.js
+  */
+ 'use strict';
 
 var async = require('async');
 
