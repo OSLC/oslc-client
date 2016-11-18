@@ -1,0 +1,187 @@
+<?xml version="1.0"?>
+<!--
+    Licensed Materials - Property of IBM
+	Copyright IBM Corporation 2012, 2015. All Rights Reserved.
+   
+    Note to U.S. Government Users Restricted Rights:  
+    Use, duplication or disclosure restricted by GSA ADP Schedule 
+	Contract with IBM Corporation.
+ -->
+
+<rdf:Description
+		rdf:about="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/rootservices"
+     xmlns:dc="http://purl.org/dc/terms/"
+     xmlns:fp="http://jazz.net/xmlns/prod/jazz/frontingapp/process/1.0/"
+     xmlns:jdb="http://jazz.net/xmlns/prod/jazz/dashboard/1.0/"
+     xmlns:jd="http://jazz.net/xmlns/prod/jazz/discovery/1.0/"
+     xmlns:jfs="http://jazz.net/xmlns/prod/jazz/jfs/1.0/"
+     xmlns:jp06="http://jazz.net/xmlns/prod/jazz/process/0.6/"
+     xmlns:jp="http://jazz.net/xmlns/prod/jazz/process/1.0/"
+     xmlns:jtp="http://jazz.net/xmlns/prod/jazz/jtp/0.6/"
+     xmlns:ju="http://jazz.net/ns/ui#"
+     xmlns:oslc_am="http://open-services.net/ns/am#"
+     xmlns:oslc="http://open-services.net/ns/core#"
+     xmlns:oslc_rm="http://open-services.net/xmlns/rm/1.0/"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:rh_dist="http://jazz.net/xmlns/dm/distribute/1.0/"
+     xmlns:rhlocator="http://jazz.net/xmlns/rh/locator/1.0/"
+     xmlns:rmps="http://jazz.net/xmlns/rmps/1.0/"
+     xmlns:vvc="http://jazz.net/ns/vvc#"
+     xmlns:trs="http://jazz.net/ns/trs#"
+     xmlns:oslc_config="http://open-services.net/ns/config#"
+     xmlns:trs2="http://open-services.net/ns/core/trs#"
+>
+
+  <!--  Root Services Resource document -->
+
+  <dc:title xml:lang="en">Design Management</dc:title>
+
+  <!-- JTS services -->
+
+  <jd:discovery rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/discovery" />
+  <jd:friends rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/friends" />
+  <jd:infocenterRoot rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/../rdmhelp" />
+  <jd:viewletServiceRoot rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts" />
+  <jd:viewletWebUIRoot rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm" />
+  <jd:jsaSsoEnabled>false</jd:jsaSsoEnabled>
+
+  <jfs:oauthDomain>https://oslclnx3.rtp.raleigh.ibm.com:9443/jts,https://oslclnx3.rtp.raleigh.ibm.com:9443/dm</jfs:oauthDomain>
+  <jfs:oauthRealmName>Jazz</jfs:oauthRealmName>
+  <jfs:oauthAccessTokenUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/oauth-access-token" />
+  <jfs:oauthApprovalModuleUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/_ajax-modules/com.ibm.team.repository.AuthorizeOAuth" />
+  <jfs:oauthExpireTokenUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/oauth-expire-token" />
+  <jfs:oauthRequestConsumerKeyUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/oauth-request-consumer" />
+  <jfs:oauthRequestTokenUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/oauth-request-token" />
+  <jfs:oauthUserAuthorizationUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/oauth-authorize" />
+
+  <jfs:jauthCheckAuthUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/jauth-check-auth" />
+  <jfs:jauthCheckTokenUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/jauth-check-token" />
+  <jfs:jauthIssueTokenUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/jauth-issue-token" />
+  <jfs:jauthProxyUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/jauth-proxy" />
+  <jfs:jauthRevokeTokenUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/jauth-revoke-token" />
+  <jfs:jauthSigninUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/jauth-signin" />
+
+  <jfs:baselines rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/baselines" />
+  <jfs:bulkOperations rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/bulk" />
+  <jfs:changes rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/changes" />
+  <jfs:currentUser rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/whoami" />
+  <jfs:history rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/history" />
+  <jfs:indexing rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/indexing" />
+  <jfs:mailer rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/mailer" />
+  <jfs:query rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/query" />
+  <jfs:search rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/search" />
+  <jfs:storage rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/storage" />
+  <jfs:users rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/users" />
+	<jfs:serverRenameStatus rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/appServerRenameStatus"/>
+
+  <jfs:setupWizardDescriptor rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/service/com.ibm.team.repository.service.internal.setup.ISetupWizardDescriptorService"/>
+
+  <!-- Service for getting and updating migration status -->
+  <jfs:migrationStatus rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/migrationStatus" />
+
+  <jdb:dashboards rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/jts/dashboards" />
+
+  <ju:widgetCatalog  rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/WidgetCatalog" />
+
+  <jp06:processSecurity rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-security" />
+  <jp06:processTemplates rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process/templates" />
+  <jp06:projectAreas rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process/project-areas" />
+  <jp06:processAbout rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-about" />
+
+  <jtp:associations	rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-authoring/associations"/>
+  <jtp:defaultPracticeLibraryUrl rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-authoring/libraries/shared" />
+  <jtp:file rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-authoring/file" />
+  <jtp:license rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-authoring/license"/>
+  <jtp:practices rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-authoring/practices" />
+  <jtp:processDescriptions rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-authoring/descriptions" />
+
+  <oslc:publisher rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/application-about" />
+
+  <!-- End of JTS services -->
+
+  <jfs:adminWebUI rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/admin" />
+  <jd:registration rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/service/com.ibm.team.repository.service.internal.setup.IRegistrationHandlerService" />
+
+  <rmps:dsf rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dsf" />
+  <rmps:dsv rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dsv" />
+  <rmps:owlInput rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/owlInput" />
+  <rmps:transforms rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/transforms" />  
+  <rmps:modelquery rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/modelquery" />
+  <rmps:oslcquery rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/oslcquery" />
+  <rmps:graphLayout rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/graphLayout" />
+  <rmps:resourceState rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/resourceState" />
+  <rmps:imageInfo rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/imageInfo" />
+  <rmps:dtkEditorDef rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dtk/EditorDefinition" />
+  <rmps:web rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/web" />
+  <rmps:comments rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/comments" />
+  <rmps:diagrams rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/diagrams" />
+  <rmps:models rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/models" />
+  <rmps:logical rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/logical" />
+  <rmps:dm-users rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dm-users" />
+  <rmps:dm-search rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dm-search" />
+  <rmps:status rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/status" />
+  <rmps:ecore-exporter rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/ecore-exporter" />
+  <rmps:properties rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/properties" />
+  <rmps:info rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dmInfo" />
+  <rmps:groups rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/groups" />
+  <rmps:projects rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/projects" />
+  <rmps:dminstall rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dminstall" />
+  <rmps:auth rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/auth" />
+  <rmps:links rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/links" />
+  <rmps:linktypes rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/linktypes" />
+  <rmps:linkServiceProviders rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/linkServiceProviders" />
+  <rmps:dm-history rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dm-history" />
+  <rmps:subscriptions rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/subscriptions" />
+  <rmps:validation rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/validation" />
+  <rmps:support rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/support" />
+  <rmps:explorer rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/explorer" />
+  <rmps:folders rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/folders" />
+  <rmps:dtkConfigure rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dtkConfigure" />
+  <rmps:rendering rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/rendering" />
+  <rmps:reviews rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/reviews" />
+  <rmps:dm-baselines rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dm-baselines" />
+  <rmps:dm-changesets rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/dm-changesets" />
+  <rmps:design rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/design" />
+  <rmps:streams rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/streams" />
+  <rmps:queries rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/queries" />
+  <rmps:metamodelconverter rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/metamodelconverter" />
+  <rmps:domainRegistry rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/domainRegistry" />
+  <rmps:compare rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/compare" />
+  <rmps:compareWithPrevious rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/compareWithPrevious" />
+  <rmps:rdfdirectory rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/rdfdirectory" />
+  <rmps:modelvalidation rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/modelvalidation" />
+  <rmps:fileUpload rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/fileUpload" />
+  <rmps:clmSampleProject rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/clmSampleProject" />
+  <rmps:queryvvc rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/queryvvc" />
+  <rmps:redact rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/redact" />
+  <rmps:trackedResourceSetProvider>
+    <trs:TrackedResourceSetProvider>
+      <trs:trackedResourceSet rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/trs" />
+    </trs:TrackedResourceSetProvider>  
+  </rmps:trackedResourceSetProvider>
+  	<!--  Process Component Tracked Resource Set 2.0 Provider -->
+	<rmps:TrackedResourceSetProvider>
+		<trs2:TrackedResourceSet>
+			<trs2:trackedResourceSet rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process-trs2" />
+			<dc:title>TRS 2.0 for DM Process Resources</dc:title>
+			<dc:description>TRS 2.0 feed for process resources in Design Management</dc:description>
+			<dc:type     rdf:resource="http://jazz.net/ns/process#" />
+			<oslc:domain rdf:resource="http://jazz.net/ns/process#" />
+		</trs2:TrackedResourceSet>
+	</rmps:TrackedResourceSetProvider>
+  
+  <fp:processProxy rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/processProxy"/>  
+  <rmps:importer xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/importer" dcterms:title="Rational Software Architect Import Service" />
+  <oslc_am:amServiceProviders rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/oslc_am" />
+  <oslc_rm:rmServiceProviders rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/oslc_rm" />
+  <rh_dist:distcenter xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/distcenter" dcterms:title="Design Management Query and Search Services" />
+  <rh_dist:query xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/distcenter/query" dcterms:title="Design Management JTS-Query Proxy" />
+  <rh_dist:indexing xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/distcenter/indexing" dcterms:title="Design Management JTS-Indexing Proxy" />
+  <rh_dist:baselines xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/distcenter/baselines" dcterms:title="Design Management JTS-BaseLines Proxy" />
+  <rhlocator:existingtools xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/rhlocator/existingtools" dcterms:title="Design Management for Existing Tools" />
+  <rhlocator:ld xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/rhlocator/ld" dcterms:title="Design Management of Tool's specific Leading Dimensions" />
+  <rhlocator:locate xmlns:dcterms="http://purl.org/dc/terms/" rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/rhlocator/locate" dcterms:title="Design Management" />
+  <vvc:eventReceiver rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/vvcEventReceiver" />
+  <vvc:compareProvider rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/vvcCompareProvider" />
+  <oslc_config:cmServiceProviders rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/cm"/>	
+</rdf:Description>

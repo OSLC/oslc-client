@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:jp="http://jazz.net/xmlns/prod/jazz/process/1.0/" xmlns:oslc="http://open-services.net/ns/core#">
+  <oslc:ServiceProvider rdf:about="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/oslc_am/_uDofcW69Eea2PoMY7wPjhg">
+    <dcterms:title>Low Flow Washer (Design Management)</dcterms:title>
+    <oslc:details rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process/project-areas/_uDofcW69Eea2PoMY7wPjhg"/>
+    <jp:consumerRegistry rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/process/project-areas/_uDofcW69Eea2PoMY7wPjhg/links"/>
+    <dcterms:publisher>
+      <oslc:Publisher>
+        <dcterms:title>Rational Design Manager (RDM)</dcterms:title>
+        <oslc:label>RDM</oslc:label>
+        <dcterms:identifier>http://jazz.net/xmlns/rmps/1.0/</dcterms:identifier>
+      </oslc:Publisher>
+    </dcterms:publisher>
+    <oslc:prefixDefinition>
+      <oslc:PrefixDefinition>
+        <oslc:prefix>rdf</oslc:prefix>
+        <oslc:prefixBase rdf:resource="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>
+      </oslc:PrefixDefinition>
+    </oslc:prefixDefinition>
+    <oslc:prefixDefinition>
+      <oslc:PrefixDefinition>
+        <oslc:prefix>foaf</oslc:prefix>
+        <oslc:prefixBase rdf:resource="http://xmlns.com/foaf/0.1/"/>
+      </oslc:PrefixDefinition>
+    </oslc:prefixDefinition>
+    <oslc:prefixDefinition>
+      <oslc:PrefixDefinition>
+        <oslc:prefix>dcterms</oslc:prefix>
+        <oslc:prefixBase rdf:resource="http://purl.org/dc/terms/"/>
+      </oslc:PrefixDefinition>
+    </oslc:prefixDefinition>
+    <oslc:prefixDefinition>
+      <oslc:PrefixDefinition>
+        <oslc:prefix>oslc</oslc:prefix>
+        <oslc:prefixBase rdf:resource="http://open-services.net/ns/core#"/>
+      </oslc:PrefixDefinition>
+    </oslc:prefixDefinition>
+    <oslc:prefixDefinition>
+      <oslc:PrefixDefinition>
+        <oslc:prefix>jp</oslc:prefix>
+        <oslc:prefixBase rdf:resource="http://jazz.net/xmlns/prod/jazz/process/1.0/"/>
+      </oslc:PrefixDefinition>
+    </oslc:prefixDefinition>
+    <oslc:service>
+      <oslc:Service>
+        <oslc:domain rdf:resource="http://open-services.net/ns/am#"/>
+        <oslc:queryCapability>
+          <oslc:QueryCapability>
+            <dcterms:title>OSLC Resource Query</dcterms:title>
+            <oslc:queryBase rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/oslcquery/_uDofcW69Eea2PoMY7wPjhg"/>
+            <oslc:resourceType rdf:resource="http://open-services.net/ns/am#Resource"/>
+          </oslc:QueryCapability>
+        </oslc:queryCapability>
+        <oslc:selectionDialog>
+          <oslc:Dialog>
+            <dcterms:title>Select Model Resource</dcterms:title>
+            <oslc:label>Resource Picker</oslc:label>
+            <oslc:resourceType rdf:resource="http://open-services.net/ns/am#Resource"/>
+            <oslc:dialog rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/_ajax-modules/rmps.pickers.RMPSPicker?project=_uDofcW69Eea2PoMY7wPjhg"/>
+            <oslc:hintWidth>800px</oslc:hintWidth>
+            <oslc:hintHeight>475px</oslc:hintHeight>
+          </oslc:Dialog>
+        </oslc:selectionDialog>
+        <sc:baselineSelectionDialog xmlns:sc="http://jazz.net/xmlns/systemContexts/1.0/">
+          <oslc:Dialog>
+            <dcterms:title>Select a Snapshot</dcterms:title>
+            <oslc:dialog rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/_ajax-modules/rmps.pickers.BaselinePicker?project=_uDofcW69Eea2PoMY7wPjhg"/>
+          </oslc:Dialog>
+        </sc:baselineSelectionDialog>
+        <sc:streamSelectionDialog xmlns:sc="http://jazz.net/xmlns/systemContexts/1.0/">
+          <oslc:Dialog>
+            <dcterms:title>Select a Snapshot</dcterms:title>
+            <oslc:dialog rdf:resource="https://oslclnx3.rtp.raleigh.ibm.com:9443/dm/_ajax-modules/rmps.pickers.StreamPicker?project=_uDofcW69Eea2PoMY7wPjhg"/>
+          </oslc:Dialog>
+        </sc:streamSelectionDialog>
+      </oslc:Service>
+    </oslc:service>
+    <jp:globalConfigurationAware rdf:datatype="http://www.w3.org/2001/XMLSchema#string">compatible</jp:globalConfigurationAware>
+    <jp:supportOSLCSimpleQuery rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</jp:supportOSLCSimpleQuery>
+    <jp:supportLinkDiscoveryViaOSLCQueries rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</jp:supportLinkDiscoveryViaOSLCQueries>
+    <jp:supportLinkDiscoveryViaLinkIndexProvider rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</jp:supportLinkDiscoveryViaLinkIndexProvider>
+  </oslc:ServiceProvider>
+</rdf:RDF>

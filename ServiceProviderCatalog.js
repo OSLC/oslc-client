@@ -63,7 +63,6 @@ function ServiceProviderCatalog(uri, rdfSource) {
  * @param callback(err, serviceProvider) - called back when the ServiceProvider had been populated with Services
  */
 ServiceProviderCatalog.prototype.serviceProvider = function(serviceProviderTitle, request, callback) {
-
 	var sp = this.catalog.statementsMatching(undefined, DCTERMS('title'), this.catalog.literal(serviceProviderTitle, undefined, this.xmlLiteral));
 	if (!sp) return console.log('Service Provider '+serviceProviderTitle+'  not found');
 	var serviceProvider = new ServiceProvider(sp[0].subject.uri, request, function doneGettingServices(err) {

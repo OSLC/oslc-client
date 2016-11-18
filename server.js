@@ -45,6 +45,9 @@ var XSD = rdflib.Namespace("http://www.w3.org/TR/2004/REC-xmlschema-2-20041028/#
 var CONTACT = rdflib.Namespace("http://www.w3.org/2000/10/swap/pim/contact#");
 var OSLC = rdflib.Namespace("http://open-services.net/ns/core#");
 var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#');
+var OSLAM = rdflib.Namespace('http://open-services.net/ns/am#');
+var OSLRM = rdflib.Namespace('http://open-services.net/ns/rm#');
+var OSLQM = rdflib.Namespace('http://open-services.net/ns/qm#');
 var DCTERMS = rdflib.Namespace('http://purl.org/dc/terms/');
 
 /**
@@ -125,7 +128,7 @@ OSLCServer.prototype.connect = function(userName, password, callback) {
 		if (response &&  response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
 			return request.post(_self.serverURI+'/j_security_check?j_username='+_self.userName+'&j_password='+_self.password, gotServiceProviderCatalog);
 		} else if (!response || response.statusCode != 200) {
-			return console.error('Failed to read the CM ServiceProviderCatalog '+err);
+			return console.error('Failed to read the ServiceProviderCatalog '+err);
 		}
 		_self.serviceProviderCatalog = new ServiceProviderCatalog(response.request.uri.href, body);
 		callback(null); // call the callback with no error
