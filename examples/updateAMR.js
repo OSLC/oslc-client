@@ -8,10 +8,10 @@ var async = require('async');
 
 var OSLCServer = require('../../oslc-client');
 // setup information - server, user, project area, work item to update
-var serverURI = "https://oslclnx3.rtp.raleigh.ibm.com:9443/dm";	// Set the Public URI of your RTC server
-var userName = "jamsden";		// the user login name or id
-var password = "matjas3cha";	
-var providerContainerName = "Low Flow Washer (Design Management)"; // Set the project area name where is located the Work Item/Change Request to be changed
+var serverURI = "";	// Set the Public URI of your RTC server
+var userName = "";		// the user login name or id
+var password = "";	
+var providerContainerName = ""; // Set the project area name where is located the Work Item/Change Request to be changed
 var amrID = "7";	// Set the Architecture Management Resource # to change
 
 var server = new OSLCServer(serverURI);
