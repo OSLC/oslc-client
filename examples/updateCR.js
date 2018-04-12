@@ -5,26 +5,40 @@
  * /Users/jamsden/Documents/workspace/net.jazz.oslc.consumer.oslc4j.cm.client
  * Example04.java, but in JavaScript and using Node.js and a prototype of oslc.js
   */
- 'use strict';
+'use strict';
 
-var async = require('async');
+var async = require('async')
+var OSLCServer = require('../../oslc-client')
+var OSLCResource = require('../resource')
+var rdflib = require('rdflib')
 
-var OSLCServer = require('../../oslc-client');
+var RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+var RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
+var DCTERMS = rdflib.Namespace('http://purl.org/dc/terms/')
+var OSLC = rdflib.Namespace('http://open-services.net/ns/core#')
+var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#')
+
+var args = process.argv.slice(2)
+if (args.length != 5) {
+	console.log("Usage: node updateCR.js serverURI projectArea workItemId userId password")
+	process.exit(1)
+}
+
 // setup information - server, user, project area, work item to update
-var serverURI = "";	// Set the Public URI of your RTC server
-var userName = "";		// the user login name or id
-var password = "";	
-var providerContainerName = ""; // Set the project area name where is located the Work Item/Change Request to be changed
-var changeRequestID = "7";	// Set the Work Item/Change Request # to change
+var serverURI = args[0]	        // Public URI of an RTC server
+var serviceProvider = args[1]   // Project Area name containing the Work Item/Change Request to be changed
+var changeRequestID = args[2]	// Work Item/Change Request id to change
+var userId = args[3]		    // the user login name
+var password = args[4]			// User's password
 
 var server = new OSLCServer(serverURI);
 
 // Connect to the OSLC server, use a service provider container, and do some
 // operations on resources. All operations are asynchronous but often have 
-// to be done in a specific order.
+// to be done in a specific order. This example use async to control the order
 
 
-console.log('Waiting for change request to update...');
+console.log('Waiting for change request to update...')
 
 // async.series executes a array of asynchronous functions in sequence. 
 // Each function takes a callback(err, [result]) that must be called when the function completes.
@@ -34,31 +48,58 @@ console.log('Waiting for change request to update...');
 // The functions can be defined inline if they do not need to be reused. Otherwise
 // define them separately and pass a reference in the array.
 
-var changeRequest = null; // the change request we'll be updating
+var changeRequest = null // the change request we'll be updating
 
 async.series([
-	function connect(callback) {server.connect(userName, password, callback);},
-	function use(callback) {server.use(providerContainerName, callback);},
-	function read(callback) {
-		server.read(changeRequestID, function(err, result) {
-			if (!err) {
-				changeRequest = result;
-				console.log('Got Change Request: ')
-				console.log(changeRequest);
+	function connect(callback) {server.connect(userId, password, callback)},
+	function use(callback) {server.use(serviceProvider, callback)},
+	function deleteStmt(callback) {
+		server.query({where: 'dcterms:title="deleteMe"'}, function(err, queryBase, results) {
+			if (err) console.error("Cannot delete resource deleteMe: ", err)
+			var member = results.any(results.sym(queryBase), RDFS('member'))
+			if (member) {
+				server.delete(member.uri, function(err) {
+					if (err) console.error('Could not delete resource: '+err)
+					console.log('deleted resource deleteMe')
+				})
+			} else {
+				console.log('resource "deleteMe" not found')
 			}
-			callback(err, changeRequest);
-		});
+			callback(err)
+		})
+	},
+	function createStmt(callback) {
+		var deleteMe = new OSLCResource()
+		deleteMe.setTitle('deleteMe')
+		deleteMe.setDescription('A test resource to delete')
+		deleteMe.set(RDF('type'), OSLCCM('ChangeRequest'))
+		server.create(deleteMe, function(err, result) {
+			console.log('Created: ' + result.id.uri)
+			callback(err)
+		})
+	},
+	function read(callback) {
+		server.readById(changeRequestID, function(err, result) {
+			if (!err) {
+				changeRequest = result
+				console.log('Got Change Request: '+changeRequest.get(DCTERMS('identifier')).value)
+				console.log(changeRequest.get(DCTERMS('title')).value)
+			}
+			callback(err, changeRequest)
+		})
 	},
 	function update(callback) {
-		changeRequest.description = changeRequest.description + new Date();
+		// Just add the current date to the end of the description
+		var description = changeRequest.get(DCTERMS('description')).value +  " - " + new Date()
+		changeRequest.set(DCTERMS('description'), description)
+		console.log('Updated resource description: '+changeRequest.getDescription())
 		server.update(changeRequest, function (err) {
-			if (!err) console.log('Updated: '+changeRequest.id);			
-			callback(err);
-		});
+			callback(err)
+		})
 	},
 	function cleanup(callback) {
-		server.disconnect();
-		console.log('Done');
-		callback(null);
+		server.disconnect()
+		console.log('Done')
+		callback(null)
 	}
-]);
+])

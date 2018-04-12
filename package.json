@@ -1,16 +1,16 @@
 {
   "name": "oslc-client",
   "main": "./index.js",
-  "description": "Fast, open framework for service integration",
-  "version": "0.0.1",
+  "description": "OSLC4JS JavaScript OSLC Client",
+  "version": "0.0.2",
   "author": {
     "name": "Jim Amsden",
     "email": "jamsden@us.ibm.com"
   },
   "contributors": [
     {
-      "name": "Jim Ruehlin",
-      "email": "jruehlin@us.ibm.com"
+      "name": "Neil Davis",
+      "email": "nbdavis@us.ibm.com"
     }
   ],
   "license": "Apache-2.0",
@@ -28,8 +28,8 @@
     "restful"
   ],
   "dependencies": {
-    "jsonld": "^0.4.2",
-    "rdflib": "^0.7.1",
-    "request": "~2.60.0"
+    "async": "^2.6.0",
+    "rdflib": "^0.16.7",
+    "request": "^2.85.0"
   }
 }

@@ -49,7 +49,7 @@ async.series([
 	function update(callback) {
 		amr.description = amr.description + new Date();
 		server.update(amr, function (err) {
-			if (!err) console.log('Updated: '+amr.id);			
+			if (!err) console.log('Updated: '+amr.url);			
 			callback(err);
 		});
 	},

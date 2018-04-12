@@ -70,6 +70,25 @@ ServiceProvider.prototype.queryBase = function() {
 	return result;
 }
 
+ServiceProvider.prototype.creationFactory = function() {
+	var result = null
+	for (var s in this.service) {
+		if (this.service[s].domain === OSLCCM().uri && this.service[s].creationFactory) {
+			for (var f in this.service[s].creationFactory) {
+				var factory = this.service[s].creationFactory[f] 
+				if (factory.resourceType === OSLCCM('ChangeRequest').uri) {
+					result = factory.creation;
+					break
+				}
+			}
+		}
+		if (result) break
+	}
+	return result
+}
+
+
+
 /** Introspect an RDF object's properties and values, and put them
  * into the JavaScript object
  *
