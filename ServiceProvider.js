@@ -16,22 +16,8 @@
 
  "use strict";
 
-var rdflib = require('rdflib');
-
-// Define some useful namespaces
-
-var FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/");
-var RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#");
-var RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#");
-var OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#");
-var DC = rdflib.Namespace("http://purl.org/dc/elements/1.1/");
-var RSS = rdflib.Namespace("http://purl.org/rss/1.0/");
-var XSD = rdflib.Namespace("http://www.w3.org/TR/2004/REC-xmlschema-2-20041028/#dt-");
-var CONTACT = rdflib.Namespace("http://www.w3.org/2000/10/swap/pim/contact#");
-var OSLC = rdflib.Namespace("http://open-services.net/ns/core#");
-var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#');
-var OSLCCM10 = rdflib.Namespace('http://open-services.net/xmlns/cm/1.0/');
-var JD = rdflib.Namespace('http://jazz.net/xmlns/prod/jazz/discovery/1.0/')
+var rdflib = require('rdflib')
+require('./namespaces')
 
 /** Encapsulates a OSLC ServiceProvider resource as in-memroy RDF knowledge base
  * This is an asynchronous constructor. The callback is called when the ServiceProvider
@@ -42,87 +28,58 @@ var JD = rdflib.Namespace('http://jazz.net/xmlns/prod/jazz/discovery/1.0/')
  * @param {request} request - for making HTTP requests 
  * @param callback(err, serviceProvider) - called with the newly constructed and populated service provider
  */
-function ServiceProvider(uri, request, callback) {
+function ServiceProvider(uri, kb) {
 	// Parse the RDF source into an internal representation for future use
-	var _self = this;
-	_self.providerURI = uri;
-	_self.provider = new rdflib.IndexedFormula();
-
-	request.get(uri, function parseServiceProvider(err, response, body) {
-		if (!response || response.statusCode != 200) {
-			return console.error('Failed to read the ServiceProvider '+err);
-		}
-		rdflib.parse(body, _self.provider, uri, 'application/rdf+xml');
-		rdflib.fromRDF(_self.provider, _self.provider.sym(_self.providerURI), _self);
-
-		callback(undefined);
-	});
+	var _self = this
+	_self.id = rdflib.sym(uri)
+	_self.kb = kb
 }
 
-ServiceProvider.prototype.queryBase = function() {
-	var result = null;
-	for (var s in this.service) {
-		if (this.service[s].domain === OSLCCM().uri && this.service[s].queryCapability) {
-			result = this.service[s].queryCapability.queryBase;
-			break;
-		}
-	}
-	return result;
-}
-
-ServiceProvider.prototype.creationFactory = function() {
-	var result = null
-	for (var s in this.service) {
-		if (this.service[s].domain === OSLCCM().uri && this.service[s].creationFactory) {
-			for (var f in this.service[s].creationFactory) {
-				var factory = this.service[s].creationFactory[f] 
-				if (factory.resourceType === OSLCCM('ChangeRequest').uri) {
-					result = factory.creation;
-					break
-				}
-			}
-		}
-		if (result) break
-	}
-	return result
-}
-
-
-
-/** Introspect an RDF object's properties and values, and put them
- * into the JavaScript object
+/*
+ * Get the queryBase URL for an OSLC QueryCapability with the given oslc:resourceType
  *
- * @param kb - the rdflib IndexedFormula that contains the RDF graph
- * @param subject - the RDF object (an rdflib sym)
- * @param {Object} jObject - a JavaScript object that will get the discovered properties
- * @returns {Boolean} true if the properties were filled in, false if the subject is an external reference
+ * @param {Symbol} a symbol for the desired oslc:resourceType
+ * @returns {string} the queryBase URL used to query resources of that type 
  */
-rdflib.fromRDF = function (kb, subject, jObject) {
-	var props = kb.statementsMatching(subject, undefined, undefined);
-	if (props.length === 0) return false;
-	for (var p in props) {
-		var prop = props[p].predicate.uri.replace(/.*(#|\/)/, '');
-		var multiValued = false;
-		if (jObject[prop] !== undefined) {
-			if (!Array.isArray(jObject[prop])) {
-				jObject[prop] = [jObject[prop]];
+ServiceProvider.prototype.queryBase = function(resourceType) {
+	var services = this.kb.each(this.id, OSLC('service'))
+	for (var service in services) {
+		var queryCapabilities = this.kb.each(services[service], OSLC('queryCapability'));
+		for (var queryCapability in queryCapabilities) {
+			if (this.kb.statementsMatching(queryCapabilities[queryCapability], OSLC('resourceType'), resourceType).length === 1) {
+				return this.kb.the(queryCapabilities[queryCapability], OSLC('queryBase')).uri
 			}
-			multiValued = true;
-		}
-		var value = null;
-		if (props[p].object.termType === 'literal') {
-			value = props[p].object.value;
-		} else {
-			value = {};
-			if (!this.fromRDF(kb, props[p].object, value)) value = props[p].object.uri;
-		}
-		if (multiValued) {
-			jObject[prop].push(value);
-		} else {
-			jObject[prop] = value;
 		}
 	}
-	return true;
+	return null
 }
+
+
+/*
+ * Get the creation URL for an OSLC CreationFactory with the given oslc:resourceType
+ *
+ * @param {Symbol | string} a symbol for, or the name of the desired oslc:resourceType
+ * @returns {string} the creation URL used to create resources of that type 
+ */
+ServiceProvider.prototype.creationFactory = function(resourceType) {
+	var services = this.kb.each(this.id, OSLC('service'))
+	for (var service in services) {
+		var creationFactories = this.kb.each(services[service], OSLC('creationFactory'));
+		// TODO: for now, find an RTC creation factory for only oslc:resourceType=oslc:ChangeRequest
+		for (var creationFactory in creationFactories) {
+			if (typeof(resourceType) === 'string') {
+				var types = this.kb.each(creationFactories[creationFactory], OSLC('resourceType'))
+				for (var aType in types) {
+					if (types[aType].uri.endsWith(resourceType)) return this.kb.the(creationFactories[creationFactory], OSLC('creation')).uri
+				}
+			} else if (this.kb.statementsMatching(creationFactories[creationFactory], OSLC('resourceType'), resourceType).length === 1) {
+				return this.kb.the(creationFactories[creationFactory], OSLC('creation')).uri
+			}
+		}
+	}
+	return null
+}
+
+
 
 module.exports = ServiceProvider;

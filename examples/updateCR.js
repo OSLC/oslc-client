@@ -11,12 +11,13 @@ var async = require('async')
 var OSLCServer = require('../../oslc-client')
 var OSLCResource = require('../resource')
 var rdflib = require('rdflib')
+require('../namespaces')
 
-var RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+/*var RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
 var RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
 var DCTERMS = rdflib.Namespace('http://purl.org/dc/terms/')
 var OSLC = rdflib.Namespace('http://open-services.net/ns/core#')
-var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#')
+var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#')*/
 
 var args = process.argv.slice(2)
 if (args.length != 5) {
@@ -51,7 +52,7 @@ console.log('Waiting for change request to update...')
 var changeRequest = null // the change request we'll be updating
 
 async.series([
-	function connect(callback) {server.connect(userId, password, callback)},
+	function connect(callback) {server.connect(userId, password, OSLCCM10('cmServiceProviders'), callback)},
 	function use(callback) {server.use(serviceProvider, callback)},
 	function deleteStmt(callback) {
 		server.query({where: 'dcterms:title="deleteMe"'}, function(err, queryBase, results) {
@@ -73,7 +74,7 @@ async.series([
 		deleteMe.setTitle('deleteMe')
 		deleteMe.setDescription('A test resource to delete')
 		deleteMe.set(RDF('type'), OSLCCM('ChangeRequest'))
-		server.create(deleteMe, function(err, result) {
+		server.create('task', deleteMe, function(err, result) {
 			console.log('Created: ' + result.id.uri)
 			callback(err)
 		})

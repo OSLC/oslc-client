@@ -16,53 +16,15 @@
 
 'use strict'
 
-var request = require('request')
-var cookies = request.jar()
-// there must be a better way, but this works
-cookies.getCookie = function(key) {
-	var _cookies = this._jar.toJSON().cookies
-	var value = null;
-	for (var cookie in _cookies) {
-		if (_cookies[cookie].key === key) {
-			value = _cookies[cookie].value
-			break
-		}
-	}
-	return value
-}
-
-request = request.defaults({
-	headers: {
-		'Accept': 'application/rdf+xml',  // reliably available RDF representation
-		'OSLC-Core-Version': '2.0'
-	},
-	strictSSL: false,  		  // no need for certificates
-	jar: cookies,             // use this cookie jar to save cookies
-	followAllRedirects: true  // for FORM based authentication
-})
+var request = require('./oslcRequest')
 
 var RootServices = require('./RootServices')
 var ServiceProviderCatalog = require('./ServiceProviderCatalog')
+var ServiceProvider = require('./ServiceProvider')
 var OSLCResource = require('./resource')
 
 var rdflib = require('rdflib')
-
-// Define some useful namespaces
-
-var FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
-var RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-var RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
-var OWL = rdflib.Namespace("http://www.w3.org/2002/07/owl#")
-var DC = rdflib.Namespace("http://purl.org/dc/elements/1.1/")
-var RSS = rdflib.Namespace("http://purl.org/rss/1.0/")
-var XSD = rdflib.Namespace("http://www.w3.org/TR/2004/REC-xmlschema-2-20041028/#dt-")
-var CONTACT = rdflib.Namespace("http://www.w3.org/2000/10/swap/pim/contact#");
-var OSLC = rdflib.Namespace("http://open-services.net/ns/core#")
-var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#')
-var OSLAM = rdflib.Namespace('http://open-services.net/ns/am#')
-var OSLRM = rdflib.Namespace('http://open-services.net/ns/rm#')
-var OSLQM = rdflib.Namespace('http://open-services.net/ns/qm#')
-var DCTERMS = rdflib.Namespace('http://purl.org/dc/terms/')
+require('./namespaces')
 
 /**
  * All the OSLCServer methods are asynchronous since many of them
@@ -117,37 +79,33 @@ function OSLCServer(serverURI) {
  *
  * @param {!string} userId   - the user's authentication ID credential
  * @param {!string} password - the user's password credential
+ * @param {!Symbol} serviceProviders - the rootservices oslc_*:*serviceProviders to connect to
  * @param {OSLCServer~noResultCallback} callback - called when the connection is established
  */
-OSLCServer.prototype.connect = function(userId, password, callback) {
+OSLCServer.prototype.connect = function(userId, password, serviceProviders, callback) {
 	var _self = this // needed to refer to this inside nested callback functions
 	_self.userId = userId
 	_self.password = password
+	// these are needed in request in order to respond to authentication challenges
+	request.userId = userId
+	request.password = password
+	request.serverURI = this.serverURI
 
 	// Get the Jazz rootservices document for OSLC v2
 	// This does not require authentication
-	request.get(_self.serverURI+'/rootservices', function gotRootServices(err, response, body) {
-		if (err || response.statusCode != 200) 
-			return console.error('Failed to read the Jazz rootservices resource '+err)
-		_self.rootservices = new RootServices(_self.serverURI+'/rootservices', body)
-
-		// Now get the ServiceProviderCatalog so that we know what services are provided
-		var catalogURI = _self.rootservices.serviceProviderCatalogURI(OSLCCM())
-		//require('request-debug')(request)
-		// This request will require authentication through FORM based challenge response
-		request.get(catalogURI, gotServiceProviderCatalog)
+	_self.read(_self.serverURI+'/rootservices', function gotRootServices(err, resource) {
+		if (err) return console.error("Could not read rootservices for "+_self.serverURI)
+		_self.rootservices = new RootServices(resource.id.uri, resource.kb)
+		// read the ServiceProviderCatalog, this does require authentication
+		var catalogURI = _self.rootservices.serviceProviderCatalog(serviceProviders)
+		_self.read(catalogURI, gotServiceProviderCatalog)
 	})
 	
-	// Parse the service provider catalog, it will be needed for any other request.
-	function gotServiceProviderCatalog(err, response, body) {
-		// Check for authentication challenge and try again after posting login credentials
-		if (response &&  response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
-			return request.post(_self.serverURI+'/j_security_check?j_username='+_self.userId+'&j_password='+_self.password, gotServiceProviderCatalog);
-		} else if (!response || response.statusCode != 200) {
-			return console.error('Failed to read the ServiceProviderCatalog '+err)
-		}
-		_self.serviceProviderCatalog = new ServiceProviderCatalog(response.request.uri.href, body)
-		callback(null) // call the callback with no error
+	// Got the service provider catalog, it will be needed for any other request.
+	function gotServiceProviderCatalog(err, resource) {
+		if (err) return console.error('Failed to read the ServiceProviderCatalog '+err)
+		_self.serviceProviderCatalog = new ServiceProviderCatalog(resource.id.uri, resource.kb)
+		callback(undefined) // call the callback with no error
 	}
 }
 
@@ -161,13 +119,14 @@ OSLCServer.prototype.connect = function(userId, password, callback) {
 OSLCServer.prototype.use = function(serviceProviderTitle, callback) {
 	var _self = this
 	_self.serviceProviderTitle = serviceProviderTitle
-	// From the service provider catalog, get the service provider resource(service.xml)
-	// resource for the project area. 
-	_self.serviceProviderCatalog.serviceProvider(serviceProviderTitle, request, function doneGettingSP(err, serviceProvider) {
-		if (err) return console.error(serviceProviderTitle + ' not found')
-		_self.serviceProvider = serviceProvider
+	// From the service provider catalog, get the service provider resource
+	var serviceProviderURL = _self.serviceProviderCatalog.serviceProvider(serviceProviderTitle)
+	if (!serviceProviderURL) return console.error(serviceProviderTitle + ' not found')
+	_self.read(serviceProviderURL, function(err, resource) {
+		if (err) return console.error('Unable to read '+serviceProviderURL)
+		_self.serviceProvider = new ServiceProvider(resource.id.uri, resource.kb)
 		callback(undefined) // call the callback with no error
-	});
+	})
 }
 
 /** The OSLCServer provides typical HTTP CRUD functions on RDF resources */
@@ -175,13 +134,14 @@ OSLCServer.prototype.use = function(serviceProviderTitle, callback) {
 /**
  * Create a new OSLC resource. An error is returned if the resource already exists
  *
+ * @param {!Symbol} oslc:resourceType - the type of resource to create (the resource may have many types).
  * @param {!resource} resource - the data used to create the resource.
- * @param {OSLCServer~resultCallback} callback - callback with an error or the created resource URL
+ * @param {OSLCServer~resultCallback} callback - callback with an error or the created OSLCResource
  */
-OSLCServer.prototype.create = function(resource, callback) {
+OSLCServer.prototype.create = function(resourceType, resource, callback) {
 	// TODO: complete the create function
-	var creationFactory = this.serviceProvider.creationFactory();
-	var jsessionid = cookies.getCookie('JSESSIONID')
+	var creationFactory = this.serviceProvider.creationFactory(resourceType);
+	var jsessionid = request.getCookie('JSESSIONID')
 	rdflib.serialize(undefined, resource.kb, 'nobase:', 'application/rdf+xml', function(err, str) {
 		var headers = {
 			'Content-Type': 'application/rdf+xml',
@@ -190,13 +150,12 @@ OSLCServer.prototype.create = function(resource, callback) {
 			'X-Jazz-CSRF-Prevent': jsessionid
 		}
 		var options = {
-			uri: creationFactory + '/task',
+			uri: creationFactory,
 			headers: headers,
 			body: str
 		}
 		request.post(options, function gotCreateResults(err, response, body) {
-			console.log(response.statusCode)
-			if (err || response.statusCode != 201) return console.log('Unable to create resource: '+err)
+			if (err || response.statusCode != 201) return console.error('Unable to create resource ('+response.statusCode+'): '+err)
 			var kb = new rdflib.IndexedFormula()
 			var uri = response.headers['location']
 			rdflib.parse(body, kb, uri, 'application/rdf+xml')
@@ -215,15 +174,14 @@ OSLCServer.prototype.create = function(resource, callback) {
  */
 OSLCServer.prototype.read = function(uri, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
-	request.get(uri, function gotResult(err, response, body) {
+	request.authGet(uri, function gotResult(err, response, body) {
 		if (err || response.statusCode != 200) {
-			return console.log('Unable to read resource '+uri+': '+err)
+			return console.error('Unable to read resource '+uri+': '+err)
 		}
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, uri, 'application/rdf+xml')
 		var results = new OSLCResource(uri, kb)
 		results.etag = response.headers['etag']
-		console.log(results.etag)
 		callback(null, results)
 	})
 }
@@ -243,7 +201,7 @@ OSLCServer.prototype.readById = function(resourceID, callback) {
 		select: '*',
 		where: 'dcterms:identifier="'+resourceID+'"',
 		orderBy: ''},  function (err, queryBase, results) {
-			if (err) return console.log('Unable to read by ID: '+err)
+			if (err) return console.error('Unable to read by ID: '+err)
 			var member = results.any(results.sym(queryBase), RDFS('member'))
 			if (member) {
 				_self.read(member.uri, function(err, resource) {
@@ -278,7 +236,7 @@ OSLCServer.prototype.update = function(resource, callback) {
 			body: str
 		}
 		request.put(options, function gotUpdateResults(err, response, body) {
-			if (err || response.statusCode != 200) return console.log('Unable to update resource: '+err)
+			if (err || response.statusCode != 200) return console.error('Unable to update resource: '+err)
 			callback(err)
 		});
     });
@@ -291,7 +249,7 @@ OSLCServer.prototype.update = function(resource, callback) {
  * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
 OSLCServer.prototype.delete = function(uri, callback) {
-	var jsessionid = cookies.getCookie('JSESSIONID')
+	var jsessionid = request.getCookie('JSESSIONID')
 	var headers = {
 		'Accept': 'application/rdf+xml',
 		'OSLC-Core-Version': '2.0',
@@ -303,7 +261,7 @@ OSLCServer.prototype.delete = function(uri, callback) {
 	}
 	request.delete(options, function deleted(err, response, body) {
 		if (err || (response.statusCode != 200 && response.statusCode != 204)) {
-			return console.log('Unable to delete resource '+uri+': '+ response.statusCode + ' ' + err)
+			return console.error('Unable to delete resource '+uri+': '+ response.statusCode + ' ' + err)
 		}
 		callback(err)
 	});
@@ -357,9 +315,9 @@ OSLCServer.prototype.query = function(options, callback) {
 		queryURI += 'oslc.orderBy='+encodeURIComponent(options.orderBy)
 	}
 	queryURI = queryBase + '?' + queryURI
-	request.get(queryURI, function gotQueryResults(err, response, body) {
-		if (err) return console.log('Unable to execute query: '+err)
-		if (response.statusCode != 200) return console.log('Unable to execute query: '+queryURI+' '+response.statusCode)
+	request.authGet(queryURI, function gotQueryResults(err, response, body) {
+		if (err) return console.error('Unable to execute query: '+err)
+		if (response.statusCode != 200) return console.error('Unable to execute query: '+queryURI+' '+response.statusCode)
 		// return the 
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, queryURI, 'application/rdf+xml')
