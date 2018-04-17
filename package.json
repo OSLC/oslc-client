@@ -29,7 +29,7 @@
   ],
   "dependencies": {
     "async": "^2.6.0",
-    "rdflib": "^0.16.7",
+    "rdflib": "git://github.com/OSLC/rdflib.js.git",
     "request": "^2.85.0"
   }
 }
