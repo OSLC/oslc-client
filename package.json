@@ -2,7 +2,7 @@
   "name": "oslc-client",
   "main": "./index.js",
   "description": "OSLC4JS JavaScript OSLC Client",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "Jim Amsden",
     "email": "jamsden@us.ibm.com"
@@ -29,7 +29,7 @@
   ],
   "dependencies": {
     "async": "^2.6.0",
-    "rdflib": "git://github.com/OSLC/rdflib.js.git",
+    "rdflib": "https://github.com/OSLC/rdflib.js.git",
     "request": "^2.85.0"
   }
 }
