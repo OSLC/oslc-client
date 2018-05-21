@@ -236,7 +236,7 @@ OSLCServer.prototype.update = function(resource, callback) {
 			body: str
 		}
 		request.put(options, function gotUpdateResults(err, response, body) {
-			if (err || response.statusCode != 200) return console.error('Unable to update resource: '+err)
+			if (err || response.statusCode != 200) return console.error('Unable to update resource: '+response.statusCode+' :'+err)
 			callback(err)
 		});
     });

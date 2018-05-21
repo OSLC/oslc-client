@@ -28,8 +28,8 @@
     "restful"
   ],
   "dependencies": {
-    "async": "^2.6.0",
-    "rdflib-jra": "~0.16.8",
-    "request": "^2.85.0"
+    "async": "^2.6.1",
+    "rdflib": "^0.16.9",
+    "request": "^2.87.0"
   }
 }

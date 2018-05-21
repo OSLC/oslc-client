@@ -36,6 +36,8 @@ function OSLCResource(uri, kb) {
 		// These are not valid QNames using prefix http://jazz.net/xmlns/prod/jazz/rtc/ext/1.0/, local part can't have dots
 		kb.removeMany(kb.sym(uri), kb.sym('http://jazz.net/xmlns/prod/jazz/rtc/ext/1.0/com.ibm.team.apt.attribute.complexity'))
 		kb.removeMany(kb.sym(uri), kb.sym('http://jazz.net/xmlns/prod/jazz/rtc/ext/1.0/com.ibm.team.apt.attribute.acceptance'))
+		kb.removeMany(kb.sym(uri), kb.sym('http://jazz.net/xmlns/prod/jazz/rtc/cm/1.0/com.ibm.team.workitem.linktype.relatedworkitem.related'))
+		kb.removeMany(kb.sym(uri), kb.sym('http://jazz.net/xmlns/prod/jazz/rtc/cm/1.0/com.ibm.team.workitem.linktype.resolvesworkitem.resolves'))
 	} else {
 		this.id = rdflib.blankNode()
 		this.kb = new rdflib.IndexedFormula()
