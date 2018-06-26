@@ -17,7 +17,7 @@
 "use strict";
 
 var rdflib = require('rdflib');
-var OSLCResource = require('./resource')
+var OSLCResource = require('./OSLCResource')
 
 require('./namespaces')
 
@@ -28,31 +28,28 @@ require('./namespaces')
  * @param {string} uri - the URI of the Jazz rootservices resource
  * @param {IndexedFormula} kb - the RDF Knowledge Base for this rootservices resource
  */
-function RootServices(uri, kb) {
-	// Parse the RDF source into an internal representation for future use
-	this.id = rdflib.sym(uri)
-	this.kb = kb
-}
-// Extend OSLCResource
-RootServices.prototype = new OSLCResource()
-RootServices.prototype.constructor = RootServices
+class RootServices extends OSLCResource {
+	constructor(uri, kb) {
+		// Parse the RDF source into an internal representation for future use
+		super(uri, kb)
+	}
 
-/** The RTC rootservices document has a number of jd:oslcCatalogs properties
- * that contain inlined oslc:ServiceProviderCatalog instances.
- *  <jd:oslcCatalogs>
- *        <oslc:ServiceProviderCatalog rdf:about="https://oslclnx2.rtp.raleigh.ibm.com:9443/ccm/oslc/workitems/catalog">
- *            <oslc:domain rdf:resource="http://open-services.net/ns/cm#"/>
- *        </oslc:ServiceProviderCatalog>
- *  </jd:oslcCatalogs>
- * We want to get the URI for the CM oslc:domain Service Provider Catalog.
- * 
- * @param {!URI} domain - the domain of the service provider catalog you want to get
- * @returns {string} - the service provider catalog URI
- */
-RootServices.prototype.serviceProviderCatalog = function(serviceProviders)  {
-	var catalog = this.kb.the(this.id, serviceProviders)
-	return catalog? catalog.uri: null
+	/** The RTC rootservices document has a number of jd:oslcCatalogs properties
+	 * that contain inlined oslc:ServiceProviderCatalog instances.
+	 *  <jd:oslcCatalogs>
+	 *        <oslc:ServiceProviderCatalog rdf:about="https://oslclnx2.rtp.raleigh.ibm.com:9443/ccm/oslc/workitems/catalog">
+	 *            <oslc:domain rdf:resource="http://open-services.net/ns/cm#"/>
+	 *        </oslc:ServiceProviderCatalog>
+	 *  </jd:oslcCatalogs>
+	 * We want to get the URI for the CM oslc:domain Service Provider Catalog.
+	 * 
+	 * @param {!URI} domain - the domain of the service provider catalog you want to get
+	 * @returns {string} - the service provider catalog URI
+	 */
+	serviceProviderCatalog(serviceProviders)  {
+		var catalog = this.kb.the(this.id, serviceProviders)
+		return catalog? catalog.uri: null
+	}
 }
 
-
-module.exports = RootServices;
+module.exports = RootServices

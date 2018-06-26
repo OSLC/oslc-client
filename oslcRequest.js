@@ -61,7 +61,11 @@ request.authGet = function (options, callback) {
 	var _self = this
 	request.get(options, function(error, response, body) {
 		if (response &&  response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
+			// JEE Form base authentication
 			request.post(_self.serverURI+'/j_security_check?j_username='+_self.userId+'&j_password='+_self.password, callback)
+		} else if (response && response.headers['www-authenticate']) {
+			// OpenIDConnect authentication (using Jazz Authentication Server)
+			request.get(options, callback).auth(_self.userId, _self.password, false)
 		} else {
 			callback(error, response, body)
 		}

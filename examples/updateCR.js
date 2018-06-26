@@ -9,7 +9,7 @@
 
 var async = require('async')
 var OSLCServer = require('../../oslc-client')
-var OSLCResource = require('../resource')
+var OSLCResource = require('../OSLCResource')
 var rdflib = require('rdflib')
 require('../namespaces')
 

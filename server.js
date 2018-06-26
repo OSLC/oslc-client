@@ -21,7 +21,7 @@ var request = require('./oslcRequest')
 var RootServices = require('./RootServices')
 var ServiceProviderCatalog = require('./ServiceProviderCatalog')
 var ServiceProvider = require('./ServiceProvider')
-var OSLCResource = require('./resource')
+var OSLCResource = require('./OSLCResource')
 
 var rdflib = require('rdflib')
 require('./namespaces')
@@ -47,15 +47,16 @@ require('./namespaces')
  * @property {ServiceProviderCatalog} serviceProviderCatalog - the server's service provider catalog
  * @property {ServiceProvider} serviceProvider - A service provider describing available services
  */
-function OSLCServer(serverURI) {
-	this.serverURI = serverURI;
-	this.userId = null;
-	this.password = null;
-	this.rootservices = null; 
-	this.serviceProviderCatalog = null;
-	this.serviceProviderTitle = null; 
-	this.serviceProvider = null;  
-}
+class OSLCServer {
+	constructor(serverURI) {
+		this.serverURI = serverURI;
+		this.userId = null;
+		this.password = null;
+		this.rootservices = null; 
+		this.serviceProviderCatalog = null;
+		this.serviceProviderTitle = null; 
+		this.serviceProvider = null;  
+	}
 
 /** OSLCServer functions are all asynchronous and use a consistent callback
  * which provides error status information from the function. This function
@@ -82,7 +83,7 @@ function OSLCServer(serverURI) {
  * @param {!Symbol} serviceProviders - the rootservices oslc_*:*serviceProviders to connect to
  * @param {OSLCServer~noResultCallback} callback - called when the connection is established
  */
-OSLCServer.prototype.connect = function(userId, password, serviceProviders, callback) {
+connect(userId, password, serviceProviders, callback) {
 	var _self = this // needed to refer to this inside nested callback functions
 	_self.userId = userId
 	_self.password = password
@@ -116,7 +117,7 @@ OSLCServer.prototype.connect = function(userId, password, serviceProviders, call
  * @param {!URI} serviceProviderTitle - the ServiceProvider or LDP Container (e.g., project area) name
  * @param {OSLCServer~noResultCallback} callback - called when the context is set to the service provider
  */
-OSLCServer.prototype.use = function(serviceProviderTitle, callback) {
+use(serviceProviderTitle, callback) {
 	var _self = this
 	_self.serviceProviderTitle = serviceProviderTitle
 	// From the service provider catalog, get the service provider resource
@@ -138,7 +139,7 @@ OSLCServer.prototype.use = function(serviceProviderTitle, callback) {
  * @param {!resource} resource - the data used to create the resource.
  * @param {OSLCServer~resultCallback} callback - callback with an error or the created OSLCResource
  */
-OSLCServer.prototype.create = function(resourceType, resource, callback) {
+create(resourceType, resource, callback) {
 	// TODO: complete the create function
 	var creationFactory = this.serviceProvider.creationFactory(resourceType);
 	var jsessionid = request.getCookie('JSESSIONID')
@@ -172,11 +173,11 @@ OSLCServer.prototype.create = function(resourceType, resource, callback) {
  * @param {string} url - the OSLC resource URL
  * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
  */
-OSLCServer.prototype.read = function(uri, callback) {
+read(uri, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
 	request.authGet(uri, function gotResult(err, response, body) {
 		if (err || response.statusCode != 200) {
-			return console.error('Unable to read resource '+uri+': '+err)
+			return console.error('Unable to read resource '+uri+': '+response.statusCode)
 		}
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, uri, 'application/rdf+xml')
@@ -193,7 +194,7 @@ OSLCServer.prototype.read = function(uri, callback) {
  * @param {string} resourceID - the OSLC resource ID (i.e., its dcterms:identifier)
  * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
  */
-OSLCServer.prototype.readById = function(resourceID, callback) {
+readById(resourceID, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
 	var _self = this
 	this.query({
@@ -220,7 +221,7 @@ OSLCServer.prototype.readById = function(resourceID, callback) {
  * @param {OSLCResource} resource - the OSLC resource to update
  * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
-OSLCServer.prototype.update = function(resource, callback) {
+update(resource, callback) {
 	// Convert the OSLC Resource into an RDF/XML resource and PUT to the server
 	// target must be undefined, and base must not be undefined to serialize properly
 	// base doesn't matter because no OSLC resource will have any relative URIs
@@ -248,7 +249,7 @@ OSLCServer.prototype.update = function(resource, callback) {
  * @param {!string} resourceID - the OSLC Resource ID
  * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
-OSLCServer.prototype.delete = function(uri, callback) {
+delete(uri, callback) {
 	var jsessionid = request.getCookie('JSESSIONID')
 	var headers = {
 		'Accept': 'application/rdf+xml',
@@ -281,7 +282,7 @@ OSLCServer.prototype.delete = function(uri, callback) {
  * @param {string} options.orderBy - '+property', what properties and order to sort the result
  * @param {string, IndexedFormula} callback - called with the query results: err, queryBase, kb
  */
-OSLCServer.prototype.query = function(options, callback) {
+query(options, callback) {
 	// Construct the query URL and query parameters, then execute the query
 	var queryBase = this.serviceProvider.queryBase();
 	var queryURI = ""
@@ -328,9 +329,9 @@ OSLCServer.prototype.query = function(options, callback) {
 /**
  * Disconnect from the server and release any resources
  */
-OSLCServer.prototype.disconnect = function() {
+disconnect() {
 	// Logout from the server
 }
-
+}
 
 module.exports = OSLCServer

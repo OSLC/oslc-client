@@ -19,7 +19,7 @@
 var rdflib = require('rdflib');
 var ServiceProvider = require('./ServiceProvider');
 require('./namespaces')
-var OSLCResource = require('./resource')
+var OSLCResource = require('./OSLCResource')
 
 
 /** Encapsulates a OSLC ServiceProviderCatalog resource as in-memroy RDF knowledge base
@@ -30,35 +30,34 @@ var OSLCResource = require('./resource')
  * @param {string} uri - the URI of the Jazz rootservices resource
  * @param {IndexedFormula} kb - the RDF Knowledge Base for this rootservices resource
 */
-function ServiceProviderCatalog(uri, kb) {
-	// Parse the RDF source into an internal representation for future use
-	var _self = this
-	_self.id = rdflib.sym(uri)
-	_self.kb = kb
-	_self.xmlLiteral = _self.kb.sym('http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral');	
-}
-ServiceProviderCatalog.prototype = new OSLCResource()
-ServiceProviderCatalog.prototype.constructor = ServiceProviderCatalog
+class ServiceProviderCatalog extends OSLCResource {
 
-/** Get the ServiceProvider with the given service provider name. This will also load all the
- * services for that service provider so they are available for use.
- *
- * This is an example of an asnychronous constructor. The constructor returns immediately
- * with the constructed function, but its member variables are set asynchronously.
- * The actual constructed function is returned through a callback when it's
- * construction has completed.
- *
- * @param {String} serviceProviderTitle - the dcterms:title of the service provider (e.g., an RTC project area)
- * @returns {string} serviceProviderURL - the ServiceProvider URL had been populated with Services
- */
-ServiceProviderCatalog.prototype.serviceProvider = function(serviceProviderTitle, callback) {
-	var sp = this.kb.statementsMatching(undefined, DCTERMS('title'), this.kb.literal(serviceProviderTitle, undefined, this.xmlLiteral));
-	if (!sp) {
-		return undefined;
-	} else {
-		return sp[0].subject.uri
+	constructor(uri, kb) {
+		// Parse the RDF source into an internal representation for future use
+		super(uri, kb)
+		var _self = this
+		_self.xmlLiteral = _self.kb.sym('http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral')
+	}	
+
+	/** Get the ServiceProvider with the given service provider name. This will also load all the
+	 * services for that service provider so they are available for use.
+	 *
+	 * This is an example of an asnychronous constructor. The constructor returns immediately
+	 * with the constructed function, but its member variables are set asynchronously.
+	 * The actual constructed function is returned through a callback when it's
+	 * construction has completed.
+	 *
+	 * @param {String} serviceProviderTitle - the dcterms:title of the service provider (e.g., an RTC project area)
+	 * @returns {string} serviceProviderURL - the ServiceProvider URL had been populated with Services
+	 */
+	serviceProvider(serviceProviderTitle, callback) {
+		var sp = this.kb.statementsMatching(undefined, DCTERMS('title'), this.kb.literal(serviceProviderTitle, undefined, this.xmlLiteral));
+		if (!sp) {
+			return undefined;
+		} else {
+			return sp[0].subject.uri
+		}
 	}
 }
 
-
-module.exports = ServiceProviderCatalog;
+module.exports = ServiceProviderCatalog
