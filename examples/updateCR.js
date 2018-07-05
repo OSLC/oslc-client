@@ -56,7 +56,7 @@ async.series([
 	function use(callback) {server.use(serviceProvider, callback)},
 	function deleteStmt(callback) {
 		server.query({where: 'dcterms:title="deleteMe"'}, function(err, queryBase, results) {
-			if (err) console.error("Cannot delete resource deleteMe: ", err)
+			if (err) console.error("Cannot delete resource: ", err)
 			var member = results.any(results.sym(queryBase), RDFS('member'))
 			if (member) {
 				server.delete(member.uri, function(err) {

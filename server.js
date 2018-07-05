@@ -84,7 +84,7 @@ class OSLCServer {
  * @param {OSLCServer~noResultCallback} callback - called when the connection is established
  */
 connect(userId, password, serviceProviders, callback) {
-	var _self = this // needed to refer to this inside nested callback functions
+	var _self = this
 	_self.userId = userId
 	_self.password = password
 	// these are needed in request in order to respond to authentication challenges
@@ -142,6 +142,7 @@ use(serviceProviderTitle, callback) {
 create(resourceType, resource, callback) {
 	// TODO: complete the create function
 	var creationFactory = this.serviceProvider.creationFactory(resourceType);
+	if (!creationFactory) return console.error("There is no creation factory for: "+resourceType)
 	var jsessionid = request.getCookie('JSESSIONID')
 	rdflib.serialize(undefined, resource.kb, 'nobase:', 'application/rdf+xml', function(err, str) {
 		var headers = {
@@ -177,7 +178,7 @@ read(uri, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
 	request.authGet(uri, function gotResult(err, response, body) {
 		if (err || response.statusCode != 200) {
-			return console.error('Unable to read resource '+uri+': '+response.statusCode)
+			return console.error('Unable to read resource '+uri+': '+response.statusCode+" "+err)
 		}
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, uri, 'application/rdf+xml')
@@ -265,7 +266,7 @@ delete(uri, callback) {
 			return console.error('Unable to delete resource '+uri+': '+ response.statusCode + ' ' + err)
 		}
 		callback(err)
-	});
+	})
 }
 
 /**
