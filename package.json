@@ -29,7 +29,8 @@
   ],
   "dependencies": {
     "async": "^2.6.1",
-    "rdflib": "^0.16.9",
-    "request": "^2.87.0"
+    "rdflib": "^0.17.1",
+    "request": "^2.88.0",
+    "url": "^0.11.0"
   }
 }

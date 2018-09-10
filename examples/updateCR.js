@@ -32,7 +32,7 @@ var changeRequestID = args[2]	// Work Item/Change Request id to change
 var userId = args[3]		    // the user login name
 var password = args[4]			// User's password
 
-var server = new OSLCServer(serverURI);
+var server = new OSLCServer(serverURI, userId, password);
 
 // Connect to the OSLC server, use a service provider container, and do some
 // operations on resources. All operations are asynchronous but often have 
@@ -52,7 +52,7 @@ console.log('Waiting for change request to update...')
 var changeRequest = null // the change request we'll be updating
 
 async.series([
-	function connect(callback) {server.connect(userId, password, OSLCCM10('cmServiceProviders'), callback)},
+	function connect(callback) {server.connect(OSLCCM10('cmServiceProviders'), callback)},
 	function use(callback) {server.use(serviceProvider, callback)},
 	function deleteStmt(callback) {
 		server.query({where: 'dcterms:title="deleteMe"'}, function(err, queryBase, results) {

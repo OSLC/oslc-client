@@ -21,8 +21,8 @@
  * for handling cookies.
  */
 
-var request = require('request')
-var cookies = request.jar()
+var request = require('request');
+var cookies = request.jar();
 
 /* 
  * Set the typical OSLC defaults
@@ -58,11 +58,12 @@ request.getCookie = function(key) {
  * using JEE FORM based authentication
  */
 request.authGet = function (options, callback) {
-	var _self = this
+	var _self = this;
+	let serverURI = (typeof options === "string")? options: options.uri;
 	request.get(options, function(error, response, body) {
 		if (response &&  response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
 			// JEE Form base authentication
-			request.post(_self.serverURI+'/j_security_check?j_username='+_self.userId+'&j_password='+_self.password, callback)
+			request.post(serverURI+'/j_security_check?j_username='+_self.userId+'&j_password='+_self.password, callback)
 		} else if (response && response.headers['www-authenticate']) {
 			// OpenIDConnect authentication (using Jazz Authentication Server)
 			request.get(options, callback).auth(_self.userId, _self.password, false)

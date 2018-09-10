@@ -39,6 +39,8 @@ require('./namespaces')
  * @class
  * @constructor
  * @param {!URI} serverURI - the server URI
+ * @param {string} userId - optional user name or authentication ID of the user
+ * @param {string} password - optional user's password credentials
  * @property {URI} serverURI - the URI of the OSLC server being accessed
  * @property {string} userId - the user name or authentication ID of the user
  * @property {string} password - the user's password credentials
@@ -48,14 +50,19 @@ require('./namespaces')
  * @property {ServiceProvider} serviceProvider - A service provider describing available services
  */
 class OSLCServer {
-	constructor(serverURI) {
+	constructor(serverURI, userId, password) {
 		this.serverURI = serverURI;
-		this.userId = null;
-		this.password = null;
+		this.userId = userId;
+		this.password = password;
+
 		this.rootservices = null; 
 		this.serviceProviderCatalog = null;
 		this.serviceProviderTitle = null; 
-		this.serviceProvider = null;  
+		this.serviceProvider = null; 
+
+		// initialize the request incase connect() isn't called 
+		request.userId = userId;
+		request.password = password;
 	}
 
 /** OSLCServer functions are all asynchronous and use a consistent callback
@@ -78,19 +85,11 @@ class OSLCServer {
 /**
  * Connect to the server with the given credentials
  *
- * @param {!string} userId   - the user's authentication ID credential
- * @param {!string} password - the user's password credential
  * @param {!Symbol} serviceProviders - the rootservices oslc_*:*serviceProviders to connect to
  * @param {OSLCServer~noResultCallback} callback - called when the connection is established
  */
-connect(userId, password, serviceProviders, callback) {
+connect(serviceProviders, callback) {
 	var _self = this
-	_self.userId = userId
-	_self.password = password
-	// these are needed in request in order to respond to authentication challenges
-	request.userId = userId
-	request.password = password
-	request.serverURI = this.serverURI
 
 	// Get the Jazz rootservices document for OSLC v2
 	// This does not require authentication
@@ -145,6 +144,7 @@ create(resourceType, resource, callback) {
 	if (!creationFactory) return console.error("There is no creation factory for: "+resourceType)
 	var jsessionid = request.getCookie('JSESSIONID')
 	rdflib.serialize(undefined, resource.kb, 'nobase:', 'application/rdf+xml', function(err, str) {
+		if (err) callback(500, null);
 		var headers = {
 			'Content-Type': 'application/rdf+xml',
 			'Accept': 'application/rdf+xml',
@@ -157,7 +157,11 @@ create(resourceType, resource, callback) {
 			body: str
 		}
 		request.post(options, function gotCreateResults(err, response, body) {
-			if (err || response.statusCode != 201) return console.error('Unable to create resource ('+response.statusCode+'): '+err)
+			if (err || response.statusCode != 201) {
+				let code = err? 500: response.statusCode;
+				callback(code, null);
+				return;
+			}
 			var kb = new rdflib.IndexedFormula()
 			var uri = response.headers['location']
 			rdflib.parse(body, kb, uri, 'application/rdf+xml')
@@ -178,7 +182,13 @@ read(uri, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
 	request.authGet(uri, function gotResult(err, response, body) {
 		if (err || response.statusCode != 200) {
-			return console.error('Unable to read resource '+uri+': '+response.statusCode+" "+err)
+			let code = err? 500: response.statusCode;
+			callback(code, null);
+			return;
+		}
+		if (response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authfailed') {
+			callback(404, null);
+			return;
 		}
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, uri, 'application/rdf+xml')
@@ -203,7 +213,10 @@ readById(resourceID, callback) {
 		select: '*',
 		where: 'dcterms:identifier="'+resourceID+'"',
 		orderBy: ''},  function (err, queryBase, results) {
-			if (err) return console.error('Unable to read by ID: '+err)
+			if (err) {
+				callback(err, null);
+				return;
+			}
 			var member = results.any(results.sym(queryBase), RDFS('member'))
 			if (member) {
 				_self.read(member.uri, function(err, resource) {
@@ -238,7 +251,6 @@ update(resource, callback) {
 			body: str
 		}
 		request.put(options, function gotUpdateResults(err, response, body) {
-			if (err || response.statusCode != 200) return console.error('Unable to update resource: '+response.statusCode+' :'+err)
 			callback(err)
 		});
     });
@@ -262,9 +274,6 @@ delete(uri, callback) {
 		headers: headers
 	}
 	request.delete(options, function deleted(err, response, body) {
-		if (err || (response.statusCode != 200 && response.statusCode != 204)) {
-			return console.error('Unable to delete resource '+uri+': '+ response.statusCode + ' ' + err)
-		}
 		callback(err)
 	})
 }
@@ -318,8 +327,11 @@ query(options, callback) {
 	}
 	queryURI = queryBase + '?' + queryURI
 	request.authGet(queryURI, function gotQueryResults(err, response, body) {
-		if (err) return console.error('Unable to execute query: '+err)
-		if (response.statusCode != 200) return console.error('Unable to execute query: '+queryURI+' '+response.statusCode)
+		if (err || response.statusCode != 200) {
+			let code = err? 500: response.statusCode;
+			callback(err, null);
+			return;
+		}
 		// return the 
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, queryURI, 'application/rdf+xml')
