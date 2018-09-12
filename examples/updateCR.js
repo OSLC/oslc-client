@@ -83,15 +83,15 @@ async.series([
 		server.readById(changeRequestID, function(err, result) {
 			if (!err) {
 				changeRequest = result
-				console.log('Got Change Request: '+changeRequest.get(DCTERMS('identifier')).value)
-				console.log(changeRequest.get(DCTERMS('title')).value)
+				console.log('Got Change Request: '+changeRequest.get(DCTERMS('identifier')))
+				console.log(changeRequest.get(DCTERMS('title')))
 			}
 			callback(err, changeRequest)
 		})
 	},
 	function update(callback) {
 		// Just add the current date to the end of the description
-		var description = changeRequest.get(DCTERMS('description')).value +  " - " + new Date()
+		var description = changeRequest.get(DCTERMS('description')) +  " - " + new Date()
 		changeRequest.set(DCTERMS('description'), description)
 		console.log('Updated resource description: '+changeRequest.getDescription())
 		server.update(changeRequest, function (err) {

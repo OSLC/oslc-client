@@ -63,15 +63,16 @@ class OSLCResource {
 	 * considered an error to attempt to get a property that doesn't exist. This
 	 * would simply return undefined.
 	 *
-	 * @param {string} property - the RDF property to get
-	 * @returns {Node} - undefined, single object URL or literal value, or array of values
+	 * @param {string|symbol} property - the RDF property to get
+	 * @returns - undefined, single object URL or literal value, or array of values
 	 */
 	get(property) {
-		var result = this.kb.each(this.id, property)
+		let p = (typeof property === 'string')? this.kb.sym(property): property
+		let result = this.kb.each(this.id, p)
 		if (result.length === 1) {
-			result = result[0]
+			return result[0].value
 		}
-		return result
+		return result.map((v) => v.value)
 	}
 
 	/**
@@ -87,7 +88,7 @@ class OSLCResource {
 	 * @returns {string} - dcterms:identifier value
 	 */
 	getIdentifier() {
-		return this.get(DCTERMS('identifier')).value
+		return this.get(DCTERMS('identifier'))
 	}
 
 	/**
@@ -97,7 +98,7 @@ class OSLCResource {
 	 */
 	getTitle() {
 		var result = this.get(DCTERMS('title'))
-		return Array.isArray(result)? result[0].value: result.value
+		return Array.isArray(result)? result[0]: result
 	}
 
 	/**
@@ -107,7 +108,7 @@ class OSLCResource {
 	 */
 	getDescription() {
 		var result = this.get(DCTERMS('description'))
-		return Array.isArray(result)? result[0].value: result.value
+		return Array.isArray(result)? result[0]: result
 	}
 
 	/**
@@ -140,17 +141,30 @@ class OSLCResource {
 	 */
 	set(property, value) {
 		// first remove the current values
+		let p = (typeof property === 'string')? this.kb.sym(property): property
 		var subject = this.id
-		this.kb.remove(this.kb.statementsMatching(subject, property, undefined))
+		this.kb.remove(this.kb.statementsMatching(subject, p, undefined))
 		if (typeof value == 'undefined') return
 		if (Array.isArray(value)) {
 			for (var i=0; i<value.length; i++) {
-				this.kb.add(subject, property, value[i])
+				this.kb.add(subject, p, value[i])
 			}
 		} else {
-			this.kb.add(subject, property, value)
+			this.kb.add(subject, p, value)
 		}
+	}
+
+	/**
+	 * Return an Array of link types (i.e. ObjectProperties) provided by this resource
+	 */
+	getLinkTypes() { 
+		let linkTypes = new Set();
+		let statements = this.kb.statementsMatching(this.id, undefined, undefined);
+		for (let statement of statements) {
+			if (statement.object instanceof rdflib.NamedNode) linkTypes.add(statement.predicate.value);
+		}
+		return linkTypes;		
 	}
 }
 
-module.exports = OSLCResource
+module.exports = OSLCResource;

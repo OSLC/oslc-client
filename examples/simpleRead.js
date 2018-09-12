@@ -40,5 +40,7 @@ server.read(resourceURI, function(err, result) {
 		return;
 	}
 	console.log(`read resource: ${result.getTitle()}`)
+	console.log(result.getLinkTypes())
+	console.log(`tracksRequirement: ${result.get('http://open-services.net/ns/cm#tracksRequirement')}`)
 })
 
