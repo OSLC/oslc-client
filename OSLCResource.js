@@ -57,6 +57,10 @@ class OSLCResource {
 		this.etag = undefined
 	}
 
+	getURI() {
+		return this.id.value;
+	}
+	
 	/**
 	 * Get a property of the resource. This method assumes any property could
 	 * be multi-valued or undefined. Based on open-world assumptions, it is not

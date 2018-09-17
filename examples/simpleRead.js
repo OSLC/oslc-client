@@ -5,7 +5,6 @@
 
 var OSLCServer = require('../../oslc-client')
 var OSLCResource = require('../OSLCResource')
-var rdflib = require('rdflib')
 require('../namespaces')
 
 // process command line arguments
@@ -24,16 +23,6 @@ var server = new OSLCServer(undefined, userId, password); // there server will b
 
 console.log(`reading: ${resourceURI}`)
 
-// async.series executes a array of asynchronous functions in sequence. 
-// Each function takes a callback(err, [result]) that must be called when the function completes.
-// Since the callbacks for OSLCServer usually have the same signature,
-// we can use the same callback for async.series callbacks directly.
-//
-// The functions can be defined inline if they do not need to be reused. Otherwise
-// define them separately and pass a reference in the array.
-
-var changeRequest = null // the change request we'll be updating
-
 server.read(resourceURI, function(err, result) {
 	if (err) {
 		console.error(` Could not read ${resourceURI}, got error: ${err}`);
@@ -43,4 +32,6 @@ server.read(resourceURI, function(err, result) {
 	console.log(result.getLinkTypes())
 	console.log(`tracksRequirement: ${result.get('http://open-services.net/ns/cm#tracksRequirement')}`)
 })
+
+
 

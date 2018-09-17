@@ -45,12 +45,13 @@ class ServiceProvider extends OSLCResource {
 	 * @returns {string} the queryBase URL used to query resources of that type 
 	 */
 	queryBase(resourceType) {
-		var services = this.kb.each(this.id, OSLC('service'))
-		for (var service in services) {
-			var queryCapabilities = this.kb.each(services[service], OSLC('queryCapability'));
-			for (var queryCapability in queryCapabilities) {
-				if (this.kb.statementsMatching(queryCapabilities[queryCapability], OSLC('resourceType'), resourceType).length === 1) {
-					return this.kb.the(queryCapabilities[queryCapability], OSLC('queryBase')).uri
+		let resourceTypeSym = (typeof resourceType === 'string')? this.kb.sym(resourceType): resourceType;
+		let services = this.kb.each(this.id, OSLC('service'));
+		for (let service of services) {
+			var queryCapabilities = this.kb.each(service, OSLC('queryCapability'));
+			for (let queryCapability of queryCapabilities) {
+				if (this.kb.statementsMatching(queryCapability, OSLC('resourceType'), resourceTypeSym).length) {
+					return this.kb.the(queryCapability, OSLC('queryBase')).value
 				}
 			}
 		}

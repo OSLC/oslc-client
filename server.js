@@ -187,7 +187,7 @@ read(uri, callback) {
 			return;
 		}
 		if (response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authfailed') {
-			callback(404, null);
+			callback(401, null);
 			return;
 		}
 		var kb = new rdflib.IndexedFormula()
@@ -205,21 +205,21 @@ read(uri, callback) {
  * @param {string} resourceID - the OSLC resource ID (i.e., its dcterms:identifier)
  * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
  */
-readById(resourceID, callback) {
+readById(resourceType, resourceID, callback) {
 	// GET the OSLC resource and convert it to a JavaScript object
 	var _self = this
 	this.query({
+		from: this.serviceProvider.queryBase(resourceType),
 		prefixes: '',
 		select: '*',
 		where: 'dcterms:identifier="'+resourceID+'"',
-		orderBy: ''},  function (err, queryBase, results) {
+		orderBy: ''},  function (err, results) {
 			if (err) {
 				callback(err, null);
 				return;
 			}
-			var member = results.any(results.sym(queryBase), RDFS('member'))
-			if (member) {
-				_self.read(member.uri, function(err, resource) {
+			if (results) {
+				_self.read(results[0].getURI(), function(err, resource) {
 					callback(err, resource)
 				})
 			} else {
@@ -286,6 +286,7 @@ delete(uri, callback) {
  * RDF representation of the resource including the selected properties.
  *
  * @param {Object} options - options for the query. An object of the form:
+ * @param {string} options.from - the queryBase URI to use for executing the query from the service provider
  * @param {string} options.prefix - 'prefix=<URI>,...', a list of namespace prefixes and URIs to resolve prefexes in the query
  * @param {string} options.select - '*', a list of resource properties to return
  * @param {string} options.where - 'property=value', what resources to return
@@ -294,7 +295,7 @@ delete(uri, callback) {
  */
 query(options, callback) {
 	// Construct the query URL and query parameters, then execute the query
-	var queryBase = this.serviceProvider.queryBase();
+	var queryBase = options.from;
 	var queryURI = ""
 	if (options.prefix) {
 		queryURI += 'oslc.prefix='+options.prefix
@@ -326,16 +327,31 @@ query(options, callback) {
 		queryURI += 'oslc.orderBy='+encodeURIComponent(options.orderBy)
 	}
 	queryURI = queryBase + '?' + queryURI
-	request.authGet(queryURI, function gotQueryResults(err, response, body) {
+	request.authGet(queryURI, function(err, response, body) {
 		if (err || response.statusCode != 200) {
 			let code = err? 500: response.statusCode;
-			callback(err, null);
+			callback(code, null);
 			return;
 		}
-		// return the 
+		if (response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authfailed') {
+			callback(401, null);
+			return;
+		}
+		// return the result
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, queryURI, 'application/rdf+xml')
-		callback(null, queryBase, kb)
+
+		// create an OSLCResource for each result member
+		// TODO: getting the members must use the discovered member predicate, rdfs:member is the default
+		let resources = [];
+		let members = kb.each(kb.sym(queryBase), RDFS('member'));
+		for (let member of members) {
+			let memberStatements = kb.statementsMatching(member, undefined, undefined);
+			let memberKb = new rdflib.IndexedFormula();
+			memberKb.add(memberStatements);
+			resources.push(new OSLCResource(member.uri, memberKb));
+		}
+		callback(null, resources)
 	});
 }
 

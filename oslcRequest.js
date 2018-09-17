@@ -23,6 +23,7 @@
 
 var request = require('request');
 var cookies = request.jar();
+var URI = require('urijs');
 
 /* 
  * Set the typical OSLC defaults
@@ -36,7 +37,8 @@ request = request.defaults({
 	jar: cookies,                // use the cookie jar to save cookies
 	followAllRedirects: true  // for FORM based authentication
 })
-request.cookies = cookies
+request.cookies = cookies;
+request.mode='no-cors';
 
 /* 
  * Lookup a cookie in the cookie jar
@@ -59,7 +61,8 @@ request.getCookie = function(key) {
  */
 request.authGet = function (options, callback) {
 	var _self = this;
-	let serverURI = (typeof options === "string")? options: options.uri;
+	let uri = new URI((typeof options === "string")? options: options.uri);
+	let serverURI = uri.origin() + uri.path();
 	request.get(options, function(error, response, body) {
 		if (response &&  response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
 			// JEE Form base authentication

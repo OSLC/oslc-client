@@ -13,11 +13,7 @@ var OSLCResource = require('../OSLCResource')
 var rdflib = require('rdflib')
 require('../namespaces')
 
-/*var RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-var RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
-var DCTERMS = rdflib.Namespace('http://purl.org/dc/terms/')
-var OSLC = rdflib.Namespace('http://open-services.net/ns/core#')
-var OSLCCM = rdflib.Namespace('http://open-services.net/ns/cm#')*/
+
 
 var args = process.argv.slice(2)
 if (args.length != 5) {
@@ -55,11 +51,11 @@ async.series([
 	function connect(callback) {server.connect(OSLCCM10('cmServiceProviders'), callback)},
 	function use(callback) {server.use(serviceProvider, callback)},
 	function deleteStmt(callback) {
-		server.query({where: 'dcterms:title="deleteMe"'}, function(err, queryBase, results) {
-			if (err) console.error("Cannot delete resource: ", err)
-			var member = results.any(results.sym(queryBase), RDFS('member'))
-			if (member) {
-				server.delete(member.uri, function(err) {
+		server.query({from: server.serviceProvider.queryBase(OSLCCM('ChangeRequest').uri), where: 'dcterms:title="deleteMe"'}, function(err, results) {
+			if (err) console.error("Cannot find resource deleteMe: ", err)
+			if (results) {
+				console.log(`deleting: ${results[0].getURI()}`)
+				server.delete(results[0].getURI(), function(err) {
 					if (err) console.error('Could not delete resource: '+err)
 					console.log('deleted resource deleteMe')
 				})
@@ -80,7 +76,7 @@ async.series([
 		})
 	},
 	function read(callback) {
-		server.readById(changeRequestID, function(err, result) {
+		server.readById(OSLCCM('ChangeRequest').uri, changeRequestID, function(err, result) {
 			if (!err) {
 				changeRequest = result
 				console.log('Got Change Request: '+changeRequest.get(DCTERMS('identifier')))
