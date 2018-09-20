@@ -22,6 +22,7 @@ var RootServices = require('./RootServices')
 var ServiceProviderCatalog = require('./ServiceProviderCatalog')
 var ServiceProvider = require('./ServiceProvider')
 var OSLCResource = require('./OSLCResource')
+var Compact = require('./Compact')
 
 var rdflib = require('rdflib')
 require('./namespaces')
@@ -190,6 +191,10 @@ read(uri, callback) {
 			callback(401, null);
 			return;
 		}
+		if (!response.headers['content-type'].startsWith('application/rdf+xml')) {
+			callback(406, null);
+			return;
+		}
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, uri, 'application/rdf+xml')
 		var results = new OSLCResource(uri, kb)
@@ -226,6 +231,44 @@ readById(resourceType, resourceID, callback) {
 				callback(err, undefined)
 			}
 		})
+}
+
+/**
+ * Read or GET all the Compact representation of a specific OSLC resource, An error is returned
+ * if the resource doesn't exist
+ *
+ * @param {string} url - the OSLC resource URL
+ * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
+ */
+readCompact(uri, callback) {
+	// GET the OSLC resource and convert it to a JavaScript object
+	let options = {
+		uri: uri,
+		headers: {
+			'Accept': 'application/x-oslc-compact+xml',
+			'OSLC-Core-Version': '2.0'
+		}
+	}
+	request.authGet(options, function gotResult(err, response, body) {
+		if (err || response.statusCode != 200) {
+			let code = err? 500: response.statusCode;
+			callback(code, null);
+			return;
+		}
+		if (response.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authfailed') {
+			callback(401, null);
+			return;
+		}
+		if (!response.headers['content-type'].startsWith('application/x-oslc-compact+xml')) {
+			callback(406, null);
+			return;
+		}
+		var kb = new rdflib.IndexedFormula()
+		rdflib.parse(body, kb, uri, 'application/rdf+xml')
+		var results = new Compact(uri, kb)
+		results.etag = response.headers['etag']
+		callback(null, results)
+	})
 }
 
 /**

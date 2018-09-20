@@ -10,7 +10,7 @@ require('../namespaces')
 // process command line arguments
 var args = process.argv.slice(2)
 if (args.length != 4) {
-	console.log("Usage: node simpleRead.js workItemID queryBase userId password")
+	console.log("Usage: node simpleQuery.js workItemID queryBase userId password")
 	process.exit(1)
 }
 

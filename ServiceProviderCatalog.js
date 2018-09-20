@@ -26,7 +26,6 @@ var OSLCResource = require('./OSLCResource')
  * @class
  *
  * @constructor
- * @param {OSLCServer} server - the server providing this rootservices resource
  * @param {string} uri - the URI of the Jazz rootservices resource
  * @param {IndexedFormula} kb - the RDF Knowledge Base for this rootservices resource
 */
