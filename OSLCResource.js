@@ -75,8 +75,11 @@ class OSLCResource {
 		let result = this.kb.each(this.id, p)
 		if (result.length === 1) {
 			return result[0].value
+		} else if (result.length > 1) {
+			return result.map((v) => v.value)
+		} else {
+			return null;
 		}
-		return result.map((v) => v.value)
 	}
 
 	/**
@@ -103,6 +106,10 @@ class OSLCResource {
 	getTitle() {
 		var result = this.get(DCTERMS('title'))
 		return Array.isArray(result)? result[0]: result
+	}
+
+	getShortTitle()	{
+		return this.get(OSLC('shortTitle'));
 	}
 
 	/**

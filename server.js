@@ -176,12 +176,13 @@ create(resourceType, resource, callback) {
  * Read or GET all the properties of a specific OSLC resource, An error is returned
  * if the resource doesn't exist
  *
- * @param {string} url - the OSLC resource URL
+ * @param {string|options} res - the OSLC resource URL or a request options object
  * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
  */
-read(uri, callback) {
+read(res, callback) {
+	let uri = (typeof res === "string")? res: res.uri;
 	// GET the OSLC resource and convert it to a JavaScript object
-	request.authGet(uri, function gotResult(err, response, body) {
+	request.authGet(res, function gotResult(err, response, body) {
 		if (err || response.statusCode != 200) {
 			let code = err? 500: response.statusCode;
 			callback(code, null);
@@ -191,13 +192,14 @@ read(uri, callback) {
 			callback(401, null);
 			return;
 		}
-		if (!response.headers['content-type'].startsWith('application/rdf+xml')) {
-			callback(406, null);
-			return;
-		}
 		var kb = new rdflib.IndexedFormula()
 		rdflib.parse(body, kb, uri, 'application/rdf+xml')
-		var results = new OSLCResource(uri, kb)
+		var results = null;
+		if (response.headers['content-type'].startsWith('application/x-oslc-compact+xml')) {
+			results = new Compact(uri, kb);
+		} else {
+			results = new OSLCResource(uri, kb)
+		}
 		results.etag = response.headers['etag']
 		callback(null, results)
 	})
