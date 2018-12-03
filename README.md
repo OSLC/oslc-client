@@ -1,4 +1,8 @@
 # oslc-client
+
+[![Discourse status](https://img.shields.io/discourse/https/meta.discourse.org/status.svg)](https://forum.open-services.net/)
+[![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/OSLC/chat)
+
 An OSLC client API Node.js module
 
 oslc-client is a JavaScript Node.js module supporting OSLC client and server development. The client API exposes the OSLC core and domain capabilities through a simple JavaScript API on the OSLC REST services. 
