@@ -2,6 +2,7 @@
 
 [![Discourse status](https://img.shields.io/discourse/https/meta.discourse.org/status.svg)](https://forum.open-services.net/)
 [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/OSLC/chat)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FOSLC%2Foslc-client.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FOSLC%2Foslc-client?ref=badge_shield)
 
 An OSLC client API Node.js module
 
@@ -40,3 +41,6 @@ Contributors:
 
 Licensed under the [Apache License Version 2.0](./LICENSE.txt).
 
+
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FOSLC%2Foslc-client.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FOSLC%2Foslc-client?ref=badge_large)
