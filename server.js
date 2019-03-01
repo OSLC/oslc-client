@@ -23,6 +23,7 @@ var ServiceProviderCatalog = require('./ServiceProviderCatalog')
 var ServiceProvider = require('./ServiceProvider')
 var OSLCResource = require('./OSLCResource')
 var Compact = require('./Compact')
+var URI = require('urijs');
 
 var rdflib = require('rdflib')
 require('./namespaces')

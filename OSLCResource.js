@@ -176,6 +176,27 @@ class OSLCResource {
 		}
 		return linkTypes;		
 	}
+
+
+	/**
+	 * Return an Array of name-value pairs for all properties of by this resource
+	 */
+	getProperties() { 
+		let result = {};
+		let statements = this.kb.statementsMatching(this.id, undefined, undefined);
+		for (let statement of statements) {
+			if (result[statement.predicate.value] != null) {
+				if (!(result[statement.predicate.value] instanceof Array)) {
+					result[statement.predicate.value] = [result[statement.predicate.value]]
+				}
+				result[statement.predicate.value].push(statement.object.value)
+			} else {
+				result[statement.predicate.value] = statement.object.value
+			}
+		}
+		return result;		
+	}
+
 }
 
 module.exports = OSLCResource;
