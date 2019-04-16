@@ -5,6 +5,7 @@
 
 var OSLCServer = require('../../oslc-client')
 var OSLCResource = require('../OSLCResource')
+var URI = require('urijs');
 require('../namespaces')
 
 // process command line arguments
@@ -23,8 +24,10 @@ var server = new OSLCServer(undefined, userId, password); // there server will b
 
 console.log(`reading: ${resourceURI}`)
 
-var reqTracksRequirementQuery = resourceURI + '?oslc.prefix=oslc=<http://open-services.net/ns/core#>,oslc_cm=<http://open-services.net/ns/cm#>,dcterms=<http://purl.org/dc/terms/>';
-reqTracksRequirementQuery = reqTracksRequirementQuery + '&oslc.properties=oslc_cm:tracksRequirement{dcterms.identifier,oslc.shortTitle,dcterms.title}';
+//var reqImplementsReqSelectedProps = resourceURI + '?oslc.prefix=oslc=<http://open-services.net/ns/core%23>,oslc_cm=<http://open-services.net/ns/cm%23>,dcterms=<http://purl.org/dc/terms/>';
+var reqImplementsReqSelectedProps = resourceURI + '?oslc.properties=oslc_cm:implementsRequirement';
+// You need to escape the <> in the oslc.prefix URIs
+reqImplementsReqSelectedProps = reqImplementsReqSelectedProps + '&oslc.prefix=oslc_cm=%3Chttp://open-services.net/ns/cm%23%3E,dcterms=%3Chttp://purl.org/dc/terms/%3E';
 
 server.read(resourceURI, function(err, result) {
 	if (err) {
@@ -54,14 +57,14 @@ server.read(resourceURI, function(err, result) {
 		console.log(`smallPreview: ${smallPreview.document}, ${smallPreview.hintHeight}, ${smallPreview.hintWidth}`);
 
 		// now read using selective properties to get some preview information of the trackedRequirements
-		server.read(reqTracksRequirementQuery, function(err, result) {
+		server.read(reqImplementsReqSelectedProps, function(err, result) {
 			if (err) {
-				console.error(` Could not read ${resourceURI}, got error: ${err}`);
+				console.error(` Could not read ${reqImplementsReqSelectedProps}, got error: ${err}`);
 				return;
 			}
 
 			// TODO: selected properties needs additional work
-			console.log(`Selected properties of: ${result.getURI()}`)
+			console.log(`\n\nSelected properties of: ${result.getURI()}`)
 			let props = result.getProperties()
 			for (let prop in props) {
 				console.log(`\t${prop}: ${props[prop]}`)
