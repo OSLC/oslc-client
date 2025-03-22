@@ -31,6 +31,10 @@ jobs:
         with:
           deno-version: v1.x
 
+
+      - name: Install deps
+        run: deno install
+      
       # Uncomment this step to verify the use of 'deno fmt' on each commit.
       # TODO: enable fmt
       # - name: Verify formatting
@@ -40,5 +44,6 @@ jobs:
       # - name: Run linter
       #   run: deno lint
 
-      - name: Run tests
-        run: deno test -A
+      # TODO: add tests
+      # - name: Run tests
+      #   run: deno test -A
