@@ -53,8 +53,10 @@ async.series([
 	(callback) => {
 		server.query({from: server.serviceProvider.queryBase(OSLCCM('ChangeRequest').uri), where: 'dcterms:title="deleteMe"'}, function(err, results) {
 			if (err) console.error("Cannot find resource deleteMe: ", err)
-			if (results) {
-				let resource = results[0]; // there may be more than one, but we'll on ly delete one
+			if (results && results.length > 0) {
+				// delete the resource
+				// there may be more than one, but we'll only delete one
+				let resource = results[0]; // there may be more than one, but we'll only delete one
 				console.log(`deleting: ${resource.getURI()}`)
 				server.delete(resource.getURI(), function(err) {
 					if (err) console.error('Could not delete resource: '+err)

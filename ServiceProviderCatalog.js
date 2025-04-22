@@ -50,7 +50,8 @@ class ServiceProviderCatalog extends OSLCResource {
 	 * @returns {string} serviceProviderURL - the ServiceProvider URL had been populated with Services
 	 */
 	serviceProvider(serviceProviderTitle, callback) {
-		var sp = this.kb.statementsMatching(undefined, DCTERMS('title'), this.kb.literal(serviceProviderTitle, undefined, this.xmlLiteral));
+		var sp = this.kb.statementsMatching(undefined, DCTERMS('title'), this.kb.literal(serviceProviderTitle
+			, this.xmlLiteral));
 		if (!sp) {
 			return undefined;
 		} else {
