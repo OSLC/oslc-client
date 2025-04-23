@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/oslc-client)](https://www.npmjs.com/package/oslc-client)
 [![Discourse status](https://img.shields.io/discourse/https/meta.discourse.org/status.svg)](https://forum.open-services.net/)
 [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/OSLC/chat)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FOSLC%2Foslc-client.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FOSLC%2Foslc-client?ref=badge_shield)
 
 An OSLC client API Node.js module
 
@@ -51,3 +52,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FOSLC%2Foslc-client.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FOSLC%2Foslc-client?ref=badge_large)
