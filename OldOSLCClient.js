@@ -14,29 +14,30 @@
  * limitations under the License.
  */
 
-'use strict'
+var request = import('./oslcRequest')
 
-var request = require('./oslcRequest')
+var RootServices = import('./RootServices')
+var ServiceProviderCatalog = import('./ServiceProviderCatalog')
+var ServiceProvider = import('./ServiceProvider')
+var OSLCResource = import('./OSLCResource')
+var Compact = import('./Compact')
+var URI = import('urijs');
 
-var RootServices = require('./RootServices')
-var ServiceProviderCatalog = require('./ServiceProviderCatalog')
-var ServiceProvider = require('./ServiceProvider')
-var OSLCResource = require('./OSLCResource')
-var Compact = require('./Compact')
-var URI = require('urijs');
-
-var rdflib = require('rdflib')
-require('./namespaces')
+var rdflib = import('rdflib')
+import('./namespaces')
 
 /**
- * All the OSLCServer methods are asynchronous since many of them
+ * Handles basic OSLC operations on oslc_am:Resource as a generic OSLC resource, resource preview, 
+ * OSLC query, configuration management, connect, use (a service provider for discovery), etc.
+ * 
+ * All the OSLCClient methods are asynchronous since many of them
  * could take a while to execute. 
  */
 
 /**
- * OSLCServer is he root of a JavaScript Node.js API for accessing OSLC resources. 
- * It provides a convenient JavaScript interface to OSLC REST services. This function 
- * constructs a generic OSLC server that can be used on any OSLC domain.
+ * OSLCCleint is the root of a JavaScript node.js API for accessing OSLC resources. 
+ * It provides a convenient JavaScript interface to OSLC REST services. This class 
+ * constructs a generic OSLC client that can be used on any OSLC domain.
  *
  * @class
  * @constructor
@@ -67,68 +68,50 @@ class OSLCServer {
 		request.password = password;
 	}
 
-/** OSLCServer functions are all asynchronous and use a consistent callback
- * which provides error status information from the function. This function
- * has no return value, only a status.
- *
- * @callback OSLCServer~noResultCallback
- * @param {string} err - the error message if any
+/** OSLCServer functions are all asynchronous supporting async/await.
  */
 
-/** OSLCServer functions are all asynchronous and use a consistent callback
- * which provides error status information from the function. This function
- * has an asynchronous result
- *
- * @callback OSLCServer~resultCallback
- * @param {string} err - the error message if any
- * @param {Object} result - the asynchronous function return value
- */
 
 /**
- * Connect to the server with the given credentials
+ * Connect to the server with the given credentials, and do some initial discovery,
+ * e.g., get all the service providers.
  *
  * @param {!Symbol} serviceProviders - the rootservices oslc_*:*serviceProviders to connect to
- * @param {OSLCServer~noResultCallback} callback - called when the connection is established
  */
-connect(serviceProviders, callback) {
-	var _self = this
-
+async connect(serviceProviders) {
 	// Get the Jazz rootservices document for OSLC v2
 	// This does not require authentication
-	_self.read(_self.serverURI+'/rootservices', function gotRootServices(err, resource) {
-		if (err) return console.error("Could not read rootservices for "+_self.serverURI)
-		_self.rootservices = new RootServices(resource.id.uri, resource.kb)
+	try {
+		let resource = await this.get(this.serverURI+'/rootservices')
+		this.rootservices = new RootServices(resource.id.uri, resource.kb)
 		// read the ServiceProviderCatalog, this does require authentication
-		var catalogURI = _self.rootservices.serviceProviderCatalog(serviceProviders)
-		_self.read(catalogURI, gotServiceProviderCatalog)
-	})
-	
-	// Got the service provider catalog, it will be needed for any other request.
-	function gotServiceProviderCatalog(err, resource) {
-		if (err) return console.error('Failed to read the ServiceProviderCatalog '+err)
-		_self.serviceProviderCatalog = new ServiceProviderCatalog(resource.id.uri, resource.kb)
-		callback(undefined) // call the callback with no error
+		let catalogURI = this.rootservices.serviceProviderCatalog(serviceProviders)
+		resource = await this.get(catalogURI)
+		this.serviceProviderCatalog = new ServiceProviderCatalog(resource.id.uri, resource.kb)
+	} catch (error) {	
+		console.error("Could not connect to "+_self.serverURI + " "+error)
+		throw error
 	}
 }
 
 /**
  * Set the OSLCServer context to use the given ServiceProvider (e.g., project area for the jazz.net apps).
- * After this call, all the Services for the ServiceProvider are known.
+ * After this call, all the OSLC Services for the ServiceProvider are known.
  *
  * @param {!URI} serviceProviderTitle - the ServiceProvider or LDP Container (e.g., project area) name
- * @param {OSLCServer~noResultCallback} callback - called when the context is set to the service provider
  */
-use(serviceProviderTitle, callback) {
-	var _self = this
-	_self.serviceProviderTitle = serviceProviderTitle
+async use(serviceProviderTitle) {
+	this.serviceProviderTitle = serviceProviderTitle
 	// From the service provider catalog, get the service provider resource
-	var serviceProviderURL = _self.serviceProviderCatalog.serviceProvider(serviceProviderTitle)
-	if (!serviceProviderURL) return console.error(serviceProviderTitle + ' not found')
-	_self.read(serviceProviderURL, function(err, resource) {
-		if (err) return console.error('Unable to read '+serviceProviderURL)
-		_self.serviceProvider = new ServiceProvider(resource.id.uri, resource.kb)
-		callback(undefined) // call the callback with no error
-	})
+	let serviceProviderURL = this.serviceProviderCatalog.serviceProvider(serviceProviderTitle)
+	if (!serviceProviderURL) throw serviceProviderTitle + ' not found';
+	try {
+		let resource = await this.get(serviceProviderURL);
+		this.serviceProvider = new ServiceProvider(resource.id.uri, resource.kb)
+	} catch (error) {
+		console.error('Unable to read '+serviceProviderURL + ' '+error);
+		throw error;
+	}
 }
 
 /** The OSLCServer provides typical HTTP CRUD functions on RDF resources */
@@ -138,9 +121,8 @@ use(serviceProviderTitle, callback) {
  *
  * @param {!Symbol} oslc:resourceType - the type of resource to create (the resource may have many types).
  * @param {!resource} resource - the data used to create the resource.
- * @param {OSLCServer~resultCallback} callback - callback with an error or the created OSLCResource
  */
-create(resourceType, resource, callback) {
+create(resourceType, resource) {
 	// TODO: complete the create function
 	var creationFactory = this.serviceProvider.creationFactory(resourceType);
 	if (!creationFactory) return console.error("There is no creation factory for: "+resourceType)
@@ -178,9 +160,8 @@ create(resourceType, resource, callback) {
  * if the resource doesn't exist
  *
  * @param {string|options} res - the OSLC resource URL or a request options object
- * @param {OSLCServer~resultCallback} callback - callback with an error or the read OSLCResource
  */
-read(res, callback) {
+async get(res) {
 	let uri = (typeof res === "string")? res: res.uri;
 	// GET the OSLC resource and convert it to a JavaScript object
 	request.authGet(res, function gotResult(err, response, body) {
@@ -275,13 +256,11 @@ readCompact(uri, callback) {
 }
 
 /**
- * Update an OSLCResource. An error is returned
- * if the resource doesn't exist.
+ * Update an OSLCResource. An exception is thrown if the resource doesn't exist.
  * 
  * @param {OSLCResource} resource - the OSLC resource to update
- * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
-update(resource, callback) {
+async put(resource) {
 	// Convert the OSLC Resource into an RDF/XML resource and PUT to the server
 	// target must be undefined, and base must not be undefined to serialize properly
 	// base doesn't matter because no OSLC resource will have any relative URIs
@@ -306,9 +285,8 @@ update(resource, callback) {
  * Delete an OSLCResource. No error is returned if the resource doesn't exist.
  *
  * @param {!string} resourceID - the OSLC Resource ID
- * @param {OSLCServer~noResultCallback} callback - callback with a potential error
  */
-delete(uri, callback) {
+async delete(uri) {
 	var jsessionid = request.getCookie('JSESSIONID')
 	var headers = {
 		'Accept': 'application/rdf+xml',

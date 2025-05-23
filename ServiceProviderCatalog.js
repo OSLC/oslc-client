@@ -14,44 +14,33 @@
  * limitations under the License.
  */
 
-"use strict";
-
-var rdflib = require('rdflib');
-var ServiceProvider = require('./ServiceProvider');
-require('./namespaces')
-var OSLCResource = require('./OSLCResource')
-
+import { OSLCResource } from './OSLCResource.js';
+import { dcterms } from './namespaces.js';
 
 /** Encapsulates a OSLC ServiceProviderCatalog resource as in-memroy RDF knowledge base
  * @class
  *
  * @constructor
- * @param {string} uri - the URI of the Jazz rootservices resource
- * @param {IndexedFormula} kb - the RDF Knowledge Base for this rootservices resource
+ * @param {string} uri - the URI of the OSLC ServiceProviderCatalog resource
+ * @param {IndexedFormula} store - the RDF Knowledge Base for this service provider catalog 
+ * @param {string} etag - the ETag of the resource
 */
-class ServiceProviderCatalog extends OSLCResource {
+export class ServiceProviderCatalog extends OSLCResource {
 
-	constructor(uri, kb) {
+	constructor(uri, store, etag=undefined) {
 		// Parse the RDF source into an internal representation for future use
-		super(uri, kb)
-		var _self = this
-		_self.xmlLiteral = _self.kb.sym('http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral')
+		super(uri, store, etag)
 	}	
 
 	/** Get the ServiceProvider with the given service provider name. This will also load all the
 	 * services for that service provider so they are available for use.
 	 *
-	 * This is an example of an asnychronous constructor. The constructor returns immediately
-	 * with the constructed function, but its member variables are set asynchronously.
-	 * The actual constructed function is returned through a callback when it's
-	 * construction has completed.
-	 *
-	 * @param {String} serviceProviderTitle - the dcterms:title of the service provider (e.g., an RTC project area)
-	 * @returns {string} serviceProviderURL - the ServiceProvider URL had been populated with Services
+	 * @param {String} serviceProviderTitle - the dcterms:title of the service provider (e.g., an EWM project area)
+	 * @returns {string} serviceProviderURL - the matching ServiceProvider URL from the service provider catalog
 	 */
-	serviceProvider(serviceProviderTitle, callback) {
-		var sp = this.kb.statementsMatching(undefined, DCTERMS('title'), this.kb.literal(serviceProviderTitle
-			, this.xmlLiteral));
+	serviceProvider(serviceProviderTitle) {
+		var sp = this.store.statementsMatching(undefined, dcterms('title'), this.store.literal(serviceProviderTitle
+			, this.store.sym('http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral')));
 		if (!sp) {
 			return undefined;
 		} else {
@@ -59,5 +48,3 @@ class ServiceProviderCatalog extends OSLCResource {
 		}
 	}
 }
-
-module.exports = ServiceProviderCatalog

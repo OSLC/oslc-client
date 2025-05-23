@@ -3,6 +3,7 @@
   "main": "./index.js",
   "description": "OSLC4JS JavaScript OSLC Client",
   "version": "1.0.7",
+  "type": "module",
   "author": {
     "name": "Jim Amsden",
     "email": "jamsden@us.ibm.com"
@@ -27,12 +28,27 @@
     "rest",
     "restful"
   ],
+  "scripts": {
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "jest --watchAll",
+    "test:coverage": "jest --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverage": true,
+    "coverageDirectory": "coverage"
+  },
   "dependencies": {
+    "@xmldom/xmldom": "^0.9.8",
     "async": "^3.2.6",
-    "browser-request": "^0.3.3",
+    "axios": "^1.9.0",
+    "axios-cookiejar-support": "^6.0.2",
+    "http-cookie-agent": "^7.0.1",
     "rdflib": "file:../../../rdflib.js",
-    "request": "^2.88.2",
-    "urijs": "^1.19.11",
-    "xmlhttprequest": "^1.8.0"
-  }   
+    "tough-cookie": ">=4.0.0",
+    "urijs": "^1.19.11"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
 }

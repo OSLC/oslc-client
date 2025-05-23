@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
- "use strict";
 
-var rdflib = require('rdflib')
-require('./namespaces')
 
-var OSLCResource = require('./OSLCResource')
+import {OSLCResource} from './OSLCResource.js';
+import {oslc} from './namespaces.js';
 
 
 /** Encapsulates a OSLC ServiceProvider resource as in-memroy RDF knowledge base
@@ -29,13 +27,12 @@ var OSLCResource = require('./OSLCResource')
  * @constructor
  * @param {!URI} uri - the URI of the ServiceProvider
  * @param {request} request - for making HTTP requests 
- * @param callback(err, serviceProvider) - called with the newly constructed and populated service provider
+ * @param etag - the ETag of the resource
  */
-class ServiceProvider extends OSLCResource {
-	constructor(uri, kb) {
+export class ServiceProvider extends OSLCResource {
+	constructor(uri, store, etag=undefined) {
 		// Parse the RDF source into an internal representation for future use
-		super(uri, kb)
-		var _self = this
+		super(uri, store, etag)
 	}
 
 	/*
@@ -44,14 +41,14 @@ class ServiceProvider extends OSLCResource {
 	 * @param {Symbol} a symbol for the desired oslc:resourceType
 	 * @returns {string} the queryBase URL used to query resources of that type 
 	 */
-	queryBase(resourceType) {
-		let resourceTypeSym = (typeof resourceType === 'string')? this.kb.sym(resourceType): resourceType;
-		let services = this.kb.each(this.id, OSLC('service'));
+	getQueryBase(resourceType) {
+		let resourceTypeSym = (typeof resourceType === 'string')? this.store.sym(resourceType): resourceType;
+		let services = this.store.each(this.uri, oslc('service'));
 		for (let service of services) {
-			var queryCapabilities = this.kb.each(service, OSLC('queryCapability'));
+			var queryCapabilities = this.store.each(service, oslc('queryCapability'));
 			for (let queryCapability of queryCapabilities) {
-				if (this.kb.statementsMatching(queryCapability, OSLC('resourceType'), resourceTypeSym).length) {
-					return this.kb.the(queryCapability, OSLC('queryBase')).value
+				if (this.store.statementsMatching(queryCapability, oslc('resourceType'), resourceTypeSym).length) {
+					return this.store.the(queryCapability, oslc('queryBase')).value
 				}
 			}
 		}
@@ -65,19 +62,18 @@ class ServiceProvider extends OSLCResource {
 	 * @param {Symbol | string} a symbol for, or the name of the desired oslc:resourceType
 	 * @returns {string} the creation URL used to create resources of that type 
 	 */
-	creationFactory(resourceType) {
-		var services = this.kb.each(this.id, OSLC('service'))
+	getCreationFactory(resourceType) {
+		var services = this.store.each(this.uri, oslc('service'))
 		for (var service in services) {
-			var creationFactories = this.kb.each(services[service], OSLC('creationFactory'));
-			// TODO: for now, find an RTC creation factory for only oslc:resourceType=oslc:ChangeRequest
+			var creationFactories = this.store.each(services[service], oslc('creationFactory'));
 			for (var creationFactory in creationFactories) {
 				if (typeof(resourceType) === 'string') {
-					var types = this.kb.each(creationFactories[creationFactory], OSLC('resourceType'))
+					var types = this.store.each(creationFactories[creationFactory], oslc('resourceType'))
 					for (var aType in types) {
-						if (types[aType].uri.endsWith(resourceType)) return this.kb.the(creationFactories[creationFactory], OSLC('creation')).uri
+						if (types[aType].uri.endsWith(resourceType)) return this.store.the(creationFactories[creationFactory], oslc('creation')).uri
 					}
-				} else if (this.kb.statementsMatching(creationFactories[creationFactory], OSLC('resourceType'), resourceType).length === 1) {
-					return this.kb.the(creationFactories[creationFactory], OSLC('creation')).uri
+				} else if (this.store.statementsMatching(creationFactories[creationFactory], oslc('resourceType'), resourceType).length === 1) {
+					return this.store.the(creationFactories[creationFactory], oslc('creation')).uri
 				}
 			}
 		}
@@ -85,4 +81,3 @@ class ServiceProvider extends OSLCResource {
 	}
 }
 
-module.exports = ServiceProvider

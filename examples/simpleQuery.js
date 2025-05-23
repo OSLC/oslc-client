@@ -1,46 +1,47 @@
 /** This is simple example that demonstrates how to do simple OSLC queryies
   * without having to connect to a server and use a service provider
   */
-'use strict';
-
-var OSLCServer = require('../../oslc-client')
-var OSLCResource = require('../OSLCResource')
-require('../namespaces')
+import { OSLCClient } from '../OSLCClient.js';
+import { oslc_cm } from '../namespaces.js';
 
 // process command line arguments
 var args = process.argv.slice(2)
-if (args.length != 4) {
-	console.log("Usage: node simpleQuery.js workItemID queryBase userId password")
+if (args.length != 5) {
+	console.log("Usage: node simpleQuery.js baseURL projectAreaName workItemID userId password")
 	process.exit(1)
 }
 
 // setup information
-var workItemId = args[0];   // an RTC work item ID (dcterms:identifier)
-var queryBase = args[1]	    // the queryBase URI from the ServiceProvider
-var userId = args[2]		// the user login name
-var password = args[3]		// User's password
+var baseURL = args[0]	    // required for authentication
+var projectArea = args[1]	    // the queryBase URI from the ServiceProvider
+var workItemId = args[2];   // an RTC work item ID (dcterms:identifier)
+var userId = args[3]		// the user login name
+var password = args[4]		// User's password
 
-var server = new OSLCServer(undefined, userId, password); // there server will be unknown in this case
+const client = new OSLCClient(baseURL, userId, password);
 
-console.log(`querying: ${workItemId} using ${userId} and ${password}`)
+console.log(`querying: ${workItemId} in ${projectArea}`)
 
-
-let sampleQuery = {
+const sampleQuery = {
+	prefix: null,
 	select: 'dcterms:identifier,oslc:shortTitle,dcterms:title',
-	from: queryBase,
-	where: `dcterms:identifier=${workItemId}`,
-};
+	where: `dcterms:identifier=${workItemId}`
+}
 
-server.query(sampleQuery, (err, results) => {
-	if (err) {
-		console.error(` Could not execute query, got error: ${err}`);
-		return;
+try {
+    await client.use(projectArea, 'CM');
+	const resources = await client.queryResources(oslc_cm('ChangeRequest'),
+		sampleQuery.prefix, 
+		sampleQuery.select,
+		sampleQuery.where);
+    console.log("✓ Query executed successfully");
+	for (let resource of resources) {
+		console.log(`Resource title: ${resource.getTitle()}`);
 	}
-	console.log('Query returned:');
-	for (let resource of results) {
-		console.log(`${resource.getIdentifier()}: ${resource.get(OSLC('shortTitle'))}: ${resource.getTitle()}`);
-	}
-});
+} catch (error) {
+	console.error(`✗ Failed to fetch resource: ${error.response?.status} ${error.message}`);
+	console.error(error.stack);
+};
 
 
 
