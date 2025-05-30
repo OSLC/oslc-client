@@ -1,7 +1,8 @@
-import { OSLCClient } from "../OSLCClient";
-import { oslc, oslc_cm } from "../namespaces";
+import OSLCClient from "../OSLCClient.js";
+import { oslc, oslc_cm } from "../namespaces.js";
 
 var client;
+const baseURI = process.env.BASE_URI || "https://elmdemo.smartfacts.com:9443/ccm";
 
 // OSLCClient.tests.js
 describe("OSLCClient tests", () => {
@@ -9,9 +10,7 @@ describe("OSLCClient tests", () => {
     /* runs once before all tests */
     const userId = process.env.USER_ID || "admin";
     const password = process.env.PASSWORD || "admin";
-    const baseURI =
-      process.env.BASE_URI || "https://elmdemo.smartfacts.com:9443/ccm";
-    client = new OSLCClient(baseURI, userId, password);
+    client = new OSLCClient(userId, password);
   });
   beforeEach(() => {
     /* runs before each test */
@@ -21,9 +20,10 @@ describe("OSLCClient tests", () => {
     test("use an ELM project area", async () => {
         let projectArea = "JKE Banking CM";
       try {
-        await client.use(projectArea, "CM");
-        expect(client.sp.queryBase(oslc_cm("ChangeRquest"))).toBeDefined();
-        expect(client.sp.creationFactory(oslc_cm("ChangeRequest"))).toBeDefined();
+        console.log('baseURI: '+baseURI);
+        await client.use(baseURI, projectArea, "CM");
+        expect(client.sp.getQueryBase(oslc_cm("ChangeRquest"))).toBeDefined();
+        expect(client.sp.getCreationFactory(oslc_cm("ChangeRequest"))).toBeDefined();
       } catch (error) {
         console.log(`Failed to use project area: ${error.message}`);
         expect(error).toBeUndefined();

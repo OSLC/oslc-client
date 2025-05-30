@@ -3,29 +3,28 @@
   */
 'use strict';
 
-import { OSLCClient } from '../OSLCClient.js';
+import OSLCClient from '../OSLCClient.js';
 import { oslc_cm } from '../namespaces.js';
-import { Compact } from '../Compact.js';
+import Compact from '../Compact.js';
 
 // process command line arguments
 var args = process.argv.slice(2)
-if (args.length != 4) {
-	console.log("Usage: node simpleRead.js baseURL resourceURI userId password")
+if (args.length != 3) {
+	console.log("Usage: node simpleCMRead.js baseURL resourceURI userId password")
 	process.exit(1)
 }
 
 // setup information
-var baseURL = args[0];		// required for authentication
-var resourceURI = args[1];	// the resource to read
-var userId = args[2]		// the user login name
-var password = args[3]		// User's password
+var resourceURI = args[0];	// the resource to read
+var userId = args[1]		// the user login name
+var password = args[2]		// User's password
 
-var client = new OSLCClient(baseURL, userId, password); // there server will be unknown in this case
+var client = new OSLCClient(userId, password, 'https://elmdemo.smartfacts.com:9443/gc/configuration/44283'); // there server will be unknown in this case
 
 console.log(`reading: ${resourceURI}`)
 
 //var reqImplementsReqSelectedProps = resourceURI + '?oslc.prefix=oslc=<http://open-services.net/ns/core%23>,oslc_cm=<http://open-services.net/ns/cm%23>,dcterms=<http://purl.org/dc/terms/>';
-var reqImplementsReqSelectedProps = resourceURI + '?oslc.properties=oslc_cm:implementsRequirement';
+var reqImplementsReqSelectedProps = resourceURI + '?oslc.properties=dcterms:title';
 // You need to escape the <> in the oslc.prefix URIs
 reqImplementsReqSelectedProps = reqImplementsReqSelectedProps + '&oslc.prefix=oslc_cm=%3Chttp://open-services.net/ns/cm%23%3E,dcterms=%3Chttp://purl.org/dc/terms/%3E';
 

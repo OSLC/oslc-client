@@ -2,7 +2,7 @@
   "name": "oslc-client",
   "main": "./index.js",
   "description": "OSLC4JS JavaScript OSLC Client",
-  "version": "1.0.7",
+  "version": "2.0.0",
   "type": "module",
   "author": {
     "name": "Jim Amsden",

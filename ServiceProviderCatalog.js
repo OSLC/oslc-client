@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { OSLCResource } from './OSLCResource.js';
+import OSLCResource from './OSLCResource.js';
 import { dcterms } from './namespaces.js';
 
 /** Encapsulates a OSLC ServiceProviderCatalog resource as in-memroy RDF knowledge base
@@ -25,7 +25,7 @@ import { dcterms } from './namespaces.js';
  * @param {IndexedFormula} store - the RDF Knowledge Base for this service provider catalog 
  * @param {string} etag - the ETag of the resource
 */
-export class ServiceProviderCatalog extends OSLCResource {
+export default class ServiceProviderCatalog extends OSLCResource {
 
 	constructor(uri, store, etag=undefined) {
 		// Parse the RDF source into an internal representation for future use

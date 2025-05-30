@@ -16,7 +16,7 @@
 
 
 
-import {OSLCResource} from './OSLCResource.js';
+import OSLCResource from './OSLCResource.js';
 import {oslc} from './namespaces.js';
 
 
@@ -29,7 +29,7 @@ import {oslc} from './namespaces.js';
  * @param {request} request - for making HTTP requests 
  * @param etag - the ETag of the resource
  */
-export class ServiceProvider extends OSLCResource {
+export default class ServiceProvider extends OSLCResource {
 	constructor(uri, store, etag=undefined) {
 		// Parse the RDF source into an internal representation for future use
 		super(uri, store, etag)

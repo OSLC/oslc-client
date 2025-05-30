@@ -1,4 +1,4 @@
-import { OSLCClient } from '../OSLCClient.js';
+import OSLCClient from '../OSLCClient.js';
 import * as $rdf from "rdflib";
 
 // process command line arguments
@@ -17,11 +17,11 @@ var password = args[4]		// User's password
 
 
 console.log('Initializing OSLC client...');
-const client = new OSLCClient(baseURI, userId, password);
+const client = new OSLCClient(userId, password);
 
 try {
     console.log('Setting up the service provider...');
-    await client.use(projectArea, 'CM');
+    await client.use(baseURI, projectArea, 'CM');
     console.log('✓ Service provider configured');
 } catch (spError) {
     console.error('✗ Failed to setup service provider:');
@@ -42,9 +42,8 @@ try {
     console.log("Executing sample query...");
     const queryResults = await client.query(
         'http://open-services.net/ns/cm#ChangeRequest',
-        null,
-        'dcterms:title',
-        'dcterms:title="SWT Exception"'
+        {select:'dcterms:title',
+        where: 'dcterms:title="SWT Exception"'}
     );
     console.log("✓ Query executed successfully");
     console.log(queryResults.serialize());

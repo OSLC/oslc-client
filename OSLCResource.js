@@ -36,10 +36,12 @@ import { dcterms, oslc } from './namespaces.js';
  * @parm {string} uri - the URI sym of this resource
  * @param {Store} kb - the Knowledge Base that contains the resource RDF graph
  */
-export class OSLCResource {
+export default class OSLCResource {
   constructor(uri=null, store=null, etag=null) {
     if (uri) {
-      this.uri = $rdf.sym(uri);
+      this.queryURI = uri;
+      const resourceURI = new URL(uri);
+      this.uri = $rdf.sym(resourceURI.origin + resourceURI.pathname);
       this.store = store;
       this.etag = etag;
     } else {

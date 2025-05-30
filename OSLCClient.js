@@ -5,11 +5,11 @@ import { DOMParser } from '@xmldom/xmldom';
 import { CookieJar , Cookie} from 'tough-cookie';
 import { wrapper } from 'axios-cookiejar-support';
 import { rdf, dcterms, rdfs, oslc, oslc_cm1, oslc_rm, oslc_qm1 } from './namespaces.js';
-import { OSLCResource } from './OSLCResource.js';
-import { Compact } from './Compact.js';
-import { RootServices } from './RootServices.js';
-import { ServiceProviderCatalog } from './ServiceProviderCatalog.js';
-import { ServiceProvider } from './ServiceProvider.js';
+import OSLCResource from './OSLCResource.js';
+import Compact from './Compact.js';
+import RootServices from './RootServices.js';
+import ServiceProviderCatalog from './ServiceProviderCatalog.js';
+import ServiceProvider from './ServiceProvider.js';
 
 // Service providers properties
 const serviceProviders = {
@@ -25,11 +25,11 @@ const serviceProviders = {
  * and perform operations like querying, creating, and updating resources.
  * It handles authentication, service provider discovery, and resource management.
  */
-export class OSLCClient {
-    constructor(server_url, user, password) {
-        this.base_url = server_url?.endsWith('/') ? server_url.slice(0, -1) : server_url;
+export default class OSLCClient {
+    constructor(user, password, configuration_context = null) {
         this.userid = user;
         this.password = password;
+        this.configuration_context = configuration_context;
         this.rootservices = null;
         this.spc = null;
         this.sp = null;
@@ -39,29 +39,33 @@ export class OSLCClient {
         // Create axios instance with cookie agents
         wrapper(axios);
         this.client = axios.create({
-            baseURL: this.baseURL,
             jar: this.jar,
             withCredentials: true,
             headers: {
-                'Accept': 'text/turtle, application/rdf+xml;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5, */*;q=0.1',
+                'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5, */*;q=0.1',
                 'OSLC-Core-Version': '2.0'
             },
-            auth: {
-                username: user,
-                password: password
-            }
+            validateStatus: status => status === 401 || status < 400 // Accept all 2xx responses
         });
+        if (configuration_context) {
+            this.client.defaults.headers.common['Configuration-Context'] = configuration_context;
+        }
 
         // Response interceptor for handling auth challenges
         this.client.interceptors.response.use(
             async response => {
                 const originalRequest = response.config;
+                const wwwAuthenticate = response?.headers?.['www-authenticate'];
                 // Check if this is an authentication challenge
                 if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {                           
                     try {                        
                         // Perform the login (JEE form auth typically uses j_username and j_password)
-                        let authUrl = `${this.base_url}/j_security_check`;
-                        await this.client.post(authUrl, {
+                        let url = new URL(response.config.url);
+                        const paths = url.pathname.split('/');
+                        url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
+                        url = url.toString();
+                        let authUrl = `${url}/j_security_check`;
+                        response = await this.client.post(authUrl, {
                             'j_username': this.userid,
                             'j_password': this.password
                         }, {
@@ -71,12 +75,41 @@ export class OSLCClient {
                             validateStatus: () => true // Allow all status codes
                         });
                         // After successful login, retry the original request with updated cookies
+                        // TODO: See if the redirects already retried the original request
                         response = await this.client(originalRequest);
                         return response;
                     } catch (error) {
                         console.error('Error during JEE authentication:', error.message);
                         return Promise.reject(error);
                     }
+                } else if (response.status === 401 &&  wwwAuthenticate?.includes('jauth realm')) {
+                    const token_uri = wwwAuthenticate.match(/token_uri="([^"]+)"/)[1];
+                    try {
+                        // Refresh the token using the provided token_uri
+                        const response = await axios.post(token_uri,
+                        new URLSearchParams({
+                            username: this.userid,
+                            password: this.password,
+                        }), {
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'Accept': 'test/plain',
+                        }});
+                        // retry the original request with the new token
+                        const newToken = response.data; // Refresh token
+                        originalRequest.config.headers['Authorization'] = `Bearer ${newToken}`;
+                        return await axios.client(originalRequest); // Retry the request
+                    } catch (error) {
+                        console.error('Error during jauth realm authentication:', error.message);
+                        return Promise.reject(error);
+                    }  
+                } else if (response.status === 401) {
+                    // Retry with basic authentication for e.g., Jazz Authorizaiton Server
+                    response.config.auth = {
+                        username: this.userid,
+                        password: this.password
+                    };
+                    return await axios.request(response.config);
                 } else {
                     // No authentication challenge, proceed with the response
                     return response;
@@ -91,7 +124,9 @@ export class OSLCClient {
      * @param {*} serviceProviderName 
      * @param {*} domain 
      */
-    async use(serviceProviderName, domain = 'CM') {
+    async use(server_url, serviceProviderName, domain = 'CM') {
+        this.base_url = server_url?.endsWith('/') ? server_url.slice(0, -1) : server_url;
+
         // Read the server's rootservices document
         let resource;
         // Fetch the rootservices document, this is an unprotected resource
@@ -192,6 +227,7 @@ export class OSLCClient {
         
         // Create a new graph for this resource
         const graph = $rdf.graph();
+        // contentType is application/x-oslc-compact+xml, but that is RDF/XML specific to OSLC Compact
         $rdf.parse(response.data, graph, url, 'application/rdf+xml');
         return new Compact(url, graph, etag);
     }
@@ -202,7 +238,7 @@ export class OSLCClient {
         if (!graph) {
             throw new Error('Resource has no data to update');
         }
-        const url = graph.value; 
+        const url = resource.getURI(); 
         const headers = {
             'OSLC-Core-Version': oslc_version,
             'Content-Type': 'application/rdf+xml; charset=utf-8',
@@ -227,7 +263,7 @@ export class OSLCClient {
         if (!graph) {
             throw new Error('Resource has no data to create');
         }
-        const creationFactory = this.getCreationFactory(resourceType);
+        const creationFactory = this.sp.getCreationFactory(resourceType);
         if (!creationFactory) {
             throw new Error(`No creation factory found for ${resourceType}`);
         }
@@ -238,10 +274,15 @@ export class OSLCClient {
         };
         
         const body = graph.serialize(null, 'application/rdf+xml');
-        const response = await this.client.post(creationFactory, body, { headers });
-        
-        if (response.status !== 200 && response.status !== 201) {
-            throw new Error(`Failed to create resource. Status: ${response.status}\n${response.data}`);
+        let response = null;
+        try {
+            response = await this.client.post(creationFactory, body, { headers });
+            if (response.status !== 200 && response.status !== 201) {
+                throw new Error(`Failed to create resource. Status: ${response.status}\n${response.data}`);
+            }        
+        } catch (error) {
+            console.error('Error creating resource:', error);
+            throw error;
         }        
         const location = response.headers.location;
         resource = await this.getResource(location);
@@ -256,18 +297,23 @@ export class OSLCClient {
         const url = resource.getURI(); 
         const headers = {
             'Accept': 'application/rdf+xml; charset=utf-8',
-            'OSLC-Core-Version': oslc_version
+            'OSLC-Core-Version': oslc_version,
+            'X-Jazz-CSRF-Prevent': this.jar.getCookiesSync(url).find(cookie => cookie.key === 'JSESSIONID').value
         };
-        const response = await this.client.delete(url, { headers });
-        
-        if (response.status !== 200 && response.status !== 204) {
-            throw new Error(`Failed to delete resource. Status: ${response.status}\n${response.data}`);
-        }        
+        try {
+            const response = await this.client.delete(url, { headers });
+            if (response.status !== 200 && response.status !== 204) {
+                throw new Error(`Failed to delete resource. Status: ${response.status}\n${response.data}`);
+            }
+        } catch (error) {
+            console.error('Error deleting resource:', error);
+            throw error;
+        }           
         return undefined;
     }
 
-    async queryResources(resourceType, prefix = null, select = null, where = null, orderBy = null) {
-        const kb = await this.query(resourceType, prefix, select, where, orderBy);
+    async queryResources(resourceType, query) {
+        const kb = await this.query(resourceType, query);
 		// create an OSLCResource for each result member
 		// TODO: getting the members must use the discovered member predicate, rdfs:member is the default
 		let resources = [];
@@ -281,15 +327,15 @@ export class OSLCClient {
         return resources;
     }
 
-    async query(resourceType, prefix = null, select = null, where = null, orderBy = null) {
+    async query(resourceType, query) {
         const queryBase = this.sp.getQueryBase(resourceType);
         if (!queryBase) {
             throw new Error(`No query capability found for ${resourceType}`);
         }
-        return this.queryWithBase(queryBase, prefix, select, where, orderBy);
+        return this.queryWithBase(queryBase, query);
     }
 
-    async queryWithBase(queryBase, prefix = null, select = null, where = null, orderBy = null) {
+    async queryWithBase(queryBase, query) {
         const headers = {
             'OSLC-Core-Version': '2.0',
             'Accept': 'application/rdf+xml',
@@ -297,10 +343,10 @@ export class OSLCClient {
         };
         
         const params = new URLSearchParams();
-        if (prefix) params.append('oslc.prefix', prefix);
-        if (select) params.append('oslc.select', select);
-        if (where) params.append('oslc.where', where);
-        if (orderBy) params.append('oslc.orderBy', orderBy);
+        if (query?.prefix) params.append('oslc.prefix', query.prefix);
+        if (query?.select) params.append('oslc.select', query.select);
+        if (query?.where) params.append('oslc.where', query.where);
+        if (query?.orderBy) params.append('oslc.orderBy', query.orderBy);
         params.append('oslc.paging', 'false');
         
         let url = `${queryBase}?${params.toString()}`;

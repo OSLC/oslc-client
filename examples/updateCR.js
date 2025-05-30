@@ -5,8 +5,8 @@
 */
 'use strict';
 
-import { OSLCClient } from '../OSLCClient.js';
-import { OSLCResource } from '../OSLCResource.js';
+import OSLCClient from '../OSLCClient.js';
+import OSLCResource from '../OSLCResource.js';
 import { oslc_cm, rdf, dcterms } from '../namespaces.js';
 
 
@@ -23,7 +23,7 @@ var changeRequestID = args[2];	// Work Item/Change Request id to change
 var userId = args[3];		    // the user login name
 var password = args[4];			// User's password
 
-var client = new OSLCClient(serverURI, userId, password);
+var client = new OSLCClient(userId, password);
 
 // Connect to the OSLC server, use a service provider container, and do some
 // operations on resources. All operations are asynchronous but often have 
@@ -40,11 +40,11 @@ var changeRequest = null // the change request we'll be manipulating
 var results = null // the results of OSLCClient request
 
 // use the service provider (a project area in this case)
-await client.use(serviceProvider);
+await client.use(serverURI, serviceProvider);
 
 // delete a resource if it exists (possibly from a previous run)
 try {
-	results =  await client.queryResources(oslc_cm('ChangeRequest'), null, null, 'dcterms:title="deleteMe"');
+	results =  await client.queryResources(oslc_cm('ChangeRequest'), {where: 'dcterms:title="deleteMe"'});
 	if (results?.length > 0) {
 		// found a resource with tigle deleteMe, delete the resource
 		// there may be more than one, but we'll only delete one
@@ -77,9 +77,16 @@ try {
 
 // read an existing ChangeRequest resource by identifier
 try {
-	changeRequest = client.readById(oslc_cm('ChangeRequest'), changeRequestID);
-	console.log('Got Change Request: '+changeRequest.get(DCTERMS('identifier')));
-	console.log(changeRequest.get(dcterms('title')));
+	changeRequest = await client.queryResources(oslc_cm('ChangeRequest'), {select:'*', where:`dcterms:identifier="${changeRequestID}"`});
+	if (changeRequest?.length > 0) {
+		changeRequest = changeRequest[0]; 
+		console.log('Got Change Request: '+changeRequest.getURI());
+		console.log(changeRequest.get(dcterms('title')));
+	} else {
+		console.log('No Change Request found with identifier: '+changeRequestID);
+		process.exit(1);
+	}	
+
 } catch (err) {
 	console.error('Could not read resource: '+err);
 }
@@ -90,7 +97,7 @@ var description = changeRequest.get(dcterms('description')) +  " - " + new Date(
 changeRequest.set(dcterms('description'), description);
 console.log('Updated resource description: '+changeRequest.getDescription());
 try {
-	results = await client.update(changeRequest);
+	results = await client.putResource(changeRequest);
 } catch (err) {
 	console.error('Could not update resource: '+err);
 }

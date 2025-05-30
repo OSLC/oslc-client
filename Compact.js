@@ -15,7 +15,7 @@
  */
 
 import { oslc } from './namespaces.js';
-import { OSLCResource } from './OSLCResource.js';
+import OSLCResource from './OSLCResource.js';
 
 
 /** Implements OSLC Copact resource to support OSLC Resource Preview
@@ -25,7 +25,7 @@ import { OSLCResource } from './OSLCResource.js';
  * @param {string} uri - the URI of the Jazz rootservices resource
  * @param {Store} store - the RDF Knowledge Base for this rootservices resource
 */
-export class Compact extends OSLCResource {
+export default class Compact extends OSLCResource {
 
 	constructor(uri, store) {
 		super(uri, store);

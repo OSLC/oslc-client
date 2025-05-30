@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { OSLCResource } from './OSLCResource.js';
+import OSLCResource from './OSLCResource.js';
 
 /** Encapsulates a Jazz rootservices document on an RDF Store
  *
@@ -23,7 +23,7 @@ import { OSLCResource } from './OSLCResource.js';
  * @param {Store} store - the RDF Knowledge Base for this rootservices resource
  * @param
  */
-export class RootServices extends OSLCResource {
+export default class RootServices extends OSLCResource {
 	constructor(uri, store, etag=undefined) {
 		// Store the RDF source in an internal representation for future use
 		super(uri, store, etag)
