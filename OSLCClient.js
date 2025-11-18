@@ -1,9 +1,10 @@
 import axios from 'axios';
+import { wrapper } from 'axios-cookiejar-support';
+import https from 'https';
 import { sym, literal } from 'rdflib';
 import * as $rdf from "rdflib";
 import { DOMParser } from '@xmldom/xmldom';
 import { CookieJar , Cookie} from 'tough-cookie';
-import { wrapper } from 'axios-cookiejar-support';
 import { rdf, dcterms, rdfs, oslc, oslc_cm1, oslc_rm, oslc_qm1 } from './namespaces.js';
 import OSLCResource from './OSLCResource.js';
 import Compact from './Compact.js';
@@ -36,17 +37,30 @@ export default class OSLCClient {
         this.ownerMap = new Map();
         this.jar = new CookieJar();
 
-        // Create axios instance with cookie agents
-        wrapper(axios);
-        this.client = axios.create({
-            jar: this.jar,
-            withCredentials: true,
+        // Create a base configuration
+        const baseConfig = {
+            timeout: 30000,
+            keepAlive: true,
             headers: {
                 'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5, */*;q=0.1',
                 'OSLC-Core-Version': '2.0'
             },
             validateStatus: status => status === 401 || status < 400 // Accept all 2xx responses
-        });
+        };
+
+        // Check if we're in Node.js (where 'window' is undefined)
+        if (typeof window === 'undefined') {
+            // We are in Node.js -> use a cookie jar
+            baseConfig.jar = this.jar;
+        } else {
+            // We are in the Browser -> use withCredentials
+            baseConfig.withCredentials = true;
+        }
+
+        // Create axios instance with cookie agents
+        this.client = wrapper(axios.create(baseConfig));
+
+        // Add the Configuration-Context header if one is given
         if (configuration_context) {
             this.client.defaults.headers.common['Configuration-Context'] = configuration_context;
         }
@@ -56,26 +70,36 @@ export default class OSLCClient {
             async response => {
                 const originalRequest = response.config;
                 const wwwAuthenticate = response?.headers?.['www-authenticate'];
-                // Check if this is an authentication challenge
-                if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {                           
+                /*
+                const allCookies = await originalRequest.jar.store.getAllCookies();
+                console.log('\n--- ALL COOKIES IN JAR ---');                    
+                allCookies.forEach((cookie, index) => {
+                    console.log(`\n[${index + 1}] ${cookie.key}=${cookie.value}`);
+                    console.log(`   Domain: ${cookie.domain}`);
+                    console.log(`   Path: ${cookie.path}`);
+                    console.log(`   Expires: ${cookie.expires}`);
+                    console.log(`   HTTP Only: ${cookie.httpOnly}`);
+                    console.log(`   Secure: ${cookie.secure}`);
+                });
+                */
+                // Check if this is a JEE Forms authentication challenge
+                if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {  
                     try {                        
                         // Perform the login (JEE form auth typically uses j_username and j_password)
                         let url = new URL(response.config.url);
                         const paths = url.pathname.split('/');
                         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
-                        url = url.toString();
-                        let authUrl = `${url}/j_security_check`;
-                        response = await this.client.post(authUrl, {
+                        response = await this.client.post(url.toString(), {
                             'j_username': this.userid,
                             'j_password': this.password
                         }, {
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded'
                             },
-                            validateStatus: () => true // Allow all status codes
+                            maxRedirects: 0,
+                            validateStatus: (status) => status === 302 // for successful login
                         });
                         // After successful login, retry the original request with updated cookies
-                        // TODO: See if the redirects already retried the original request
                         response = await this.client(originalRequest);
                         return response;
                     } catch (error) {
@@ -132,7 +156,7 @@ export default class OSLCClient {
         // Fetch the rootservices document, this is an unprotected resource
         try {
             resource = await this.getResource(`${this.base_url}/rootservices`);
-            this.rootservices = new RootServices(resource.uri, resource.store, resource.etag);
+            this.rootservices = new RootServices(resource.getURI(), resource.store, resource.etag);
         } catch (error) {
             console.error('Error fetching rootservices:', error);
             throw new Error('Failed to fetch rootservices document');
@@ -145,7 +169,7 @@ export default class OSLCClient {
         }        
         try {
             resource = await this.getResource(spcURL);
-            this.spc = new ServiceProviderCatalog(resource.uri, resource.store, resource.etag);
+            this.spc = new ServiceProviderCatalog(resource.getURI(), resource.store, resource.etag);
         } catch (error) {
             console.error('Error fetching ServiceProviderCatalog:', error);
         }
@@ -156,7 +180,7 @@ export default class OSLCClient {
             throw new Error(`${serviceProviderName} not found in service catalog`);
         }        
         resource = await this.getResource(spURL);
-        this.sp = new ServiceProvider(resource.uri, resource.store, resource.etag);
+        this.sp = new ServiceProvider(resource.getURI(), resource.store, resource.etag);
     }
 
     /**
@@ -194,7 +218,7 @@ export default class OSLCClient {
             try {
                 $rdf.parse(response.data, graph, url, contentType)
             } catch (err) {
-                console.log(err)
+                console.error(err)
             }                        
             return new OSLCResource(url, graph, etag);
         }        
@@ -322,7 +346,7 @@ export default class OSLCClient {
 			let memberStatements = kb.statementsMatching(member.object, undefined, undefined);
 			let memberKb = $rdf.graph();
 			memberKb.add(memberStatements);
-			resources.push(new OSLCResource(member.object, memberKb));
+			resources.push(new OSLCResource(member.object.value, memberKb));
 		}
         return resources;
     }
@@ -359,7 +383,7 @@ export default class OSLCClient {
         try {
             $rdf.parse(response.data, store, url, contentType)
         } catch (err) {
-            console.log(err)
+            console.error(err)
         }                                
         let nextPage = store.any(sym(queryBase), oslc('nextPage'), null)?.value;
         while (nextPage) {
@@ -367,7 +391,7 @@ export default class OSLCClient {
             try {
                 $rdf.parse(response.data, store, url, contentType)
             } catch (err) {
-                console.log(err)
+                console.error(err)
             }                                
             nextPage = store.any(sym(nextPage), oslc('nextPage'), null)?.value;
         }
@@ -391,7 +415,7 @@ export default class OSLCClient {
         try {
             $rdf.parse(response.data, store, url, contentType)
         } catch (err) {
-            console.log(err)
+            console.error(err)
         }                                
         const name = store.any(
             sym(contentLocation), 

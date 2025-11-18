@@ -31,11 +31,6 @@ var client = new OSLCClient(userId, password);
 
 console.log(`Creating, updating and deleting a ChangeRequest in ${serviceProvider}...`);
 
-// async.series executes a array of asynchronous functions in sequence. 
-// Each function takes a callback(err, [result]) that must be called when the function completes.
-// Since the callbacks for OSLCServer usually have the same signature,
-// we can use the same callback for async.series callbacks directly.
-
 var changeRequest = null // the change request we'll be manipulating
 var results = null // the results of OSLCClient request
 
