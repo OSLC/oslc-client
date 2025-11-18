@@ -16,4 +16,7 @@
 
  'use strict';
 
-module.exports = require('./server');
+// This module is the entry point for the OSLC Client library.
+// It exports the server module, which is the main module of the library.
+// This is what is imported when the module is required.
+export { OSLCClient } from './OSLCClient.js';

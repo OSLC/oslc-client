@@ -14,13 +14,8 @@
  * limitations under the License.
  */
 
-"use strict";
-
-var rdflib = require('rdflib');
-require('./namespaces')
-
-var ServiceProvider = require('./ServiceProvider');
-var OSLCResource = require('./OSLCResource')
+import { oslc } from './namespaces.js';
+import OSLCResource from './OSLCResource.js';
 
 
 /** Implements OSLC Copact resource to support OSLC Resource Preview
@@ -28,53 +23,52 @@ var OSLCResource = require('./OSLCResource')
  *
  * @constructor
  * @param {string} uri - the URI of the Jazz rootservices resource
- * @param {IndexedFormula} kb - the RDF Knowledge Base for this rootservices resource
+ * @param {Store} store - the RDF Knowledge Base for this rootservices resource
 */
-class Compact extends OSLCResource {
+export default class Compact extends OSLCResource {
 
-	constructor(uri, kb) {
-		super(uri, kb);
+	constructor(uri, store) {
+		super(uri, store);
 	}
 
 	getShortTitle()	{
-		return this.get(OSLC('shortTitle'));
+		return this.get(oslc('shortTitle'));
 	}
 
 	getIcon()	{
-		return this.get(OSLC('icon'));
+		return this.get(oslc('icon'));
 	}
 
 	getIconTitle()	{
-		return this.get(OSLC('iconTitle'));
+		return this.get(oslc('iconTitle'));
 	}
 
 	getIconSrcSet()	{
-		return this.get(OSLC('iconSrcSet'));
+		return this.get(oslc('iconSrcSet'));
 	}
 
 	getSmallPreview()	{
-		let preview = this.kb.the(this.id, OSLC('smallPreview'));
+		let preview = this.store.the(this.uri, oslc('smallPreview'));
 		if (!preview) return null;
-		let hintHeight = this.kb.the(preview, OSLC('hintHeight'));
-		let hintWidth = this.kb.the(preview, OSLC('hintWidth'));
+		let hintHeight = this.store.the(preview, oslc('hintHeight'));
+		let hintWidth = this.store.the(preview, oslc('hintWidth'));
 		return {
-			document: this.kb.the(preview, OSLC('document')).value,
+			document: this.store.the(preview, oslc('document')).value,
 			hintHeight: hintHeight? hintHeight.value: undefined,
 			hintWidth: hintWidth? hintWidth.value: undefined
 		}
 	}
 
 	getLargePreview()	{
-		let preview = this.kb.the(this.id, OSLC('largePreview'));
+		let preview = this.store.the(this.uri, oslc('largePreview'));
 		if (!preview) return null;
-		let hintHeight = this.kb.the(preview, OSLC('hintHeight'));
-		let hintWidth = this.kb.the(preview, OSLC('hintWidth'));
+		let hintHeight = this.store.the(preview, oslc('hintHeight'));
+		let hintWidth = this.store.the(preview, oslc('hintWidth'));
 		return {
-			document: this.kb.the(preview, OSLC('document')).value,
+			document: this.store.the(preview, oslc('document')).value,
 			hintHeight: hintHeight? hintHeight.value: undefined,
 			hintWidth: hintWidth? hintWidth.value: undefined
 		}
 	}
 }
 
-module.exports = Compact;

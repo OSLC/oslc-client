@@ -14,24 +14,19 @@
  * limitations under the License.
  */
 
-"use strict";
+import OSLCResource from './OSLCResource.js';
 
-var rdflib = require('rdflib');
-var OSLCResource = require('./OSLCResource')
-
-require('./namespaces')
-
-/** Encapsulates a Jazz rootservices document as in-memroy RDF knowledge base
+/** Encapsulates a Jazz rootservices document on an RDF Store
  *
  * @constructor
- * @param {OSLCServer} server - the server providing this rootservices resource
  * @param {string} uri - the URI of the Jazz rootservices resource
- * @param {IndexedFormula} kb - the RDF Knowledge Base for this rootservices resource
+ * @param {Store} store - the RDF Knowledge Base for this rootservices resource
+ * @param
  */
-class RootServices extends OSLCResource {
-	constructor(uri, kb) {
-		// Parse the RDF source into an internal representation for future use
-		super(uri, kb)
+export default class RootServices extends OSLCResource {
+	constructor(uri, store, etag=undefined) {
+		// Store the RDF source in an internal representation for future use
+		super(uri, store, etag)
 	}
 
 	/** The RTC rootservices document has a number of jd:oslcCatalogs properties
@@ -43,13 +38,12 @@ class RootServices extends OSLCResource {
 	 *  </jd:oslcCatalogs>
 	 * We want to get the URI for the CM oslc:domain Service Provider Catalog.
 	 * 
-	 * @param {!URI} domain - the domain of the service provider catalog you want to get
-	 * @returns {string} - the service provider catalog URI
+	 * @param {!URI} serviceProviders - the URL of the rootservices. *serviceProviders element
+	 * @returns {string} - the first matching service provider catalog URI
 	 */
 	serviceProviderCatalog(serviceProviders)  {
-		var catalog = this.kb.the(this.id, serviceProviders)
-		return catalog? catalog.uri: null
+		var catalog = this.store.the(this.uri, serviceProviders)
+		return catalog?.uri
 	}
 }
 
-module.exports = RootServices
