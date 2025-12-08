@@ -1,16 +1,29 @@
 import axios from 'axios';
-import { wrapper } from 'axios-cookiejar-support';
-import https from 'https';
-import { sym, literal } from 'rdflib';
+import { sym } from 'rdflib';
 import * as $rdf from "rdflib";
-import { DOMParser } from '@xmldom/xmldom';
-import { CookieJar , Cookie} from 'tough-cookie';
-import { rdf, dcterms, rdfs, oslc, oslc_cm1, oslc_rm, oslc_qm1 } from './namespaces.js';
+import { rdfs, oslc, oslc_cm1, oslc_rm, oslc_qm1 } from './namespaces.js';
 import OSLCResource from './OSLCResource.js';
 import Compact from './Compact.js';
 import RootServices from './RootServices.js';
 import ServiceProviderCatalog from './ServiceProviderCatalog.js';
 import ServiceProvider from './ServiceProvider.js';
+
+// Conditional imports for Node.js only
+let wrapper, CookieJar, DOMParser;
+const isNodeEnvironment = typeof window === 'undefined';
+
+if (isNodeEnvironment) {
+    // Node.js imports
+    const cookiejarSupport = await import('axios-cookiejar-support');
+    wrapper = cookiejarSupport.wrapper;
+    const toughCookie = await import('tough-cookie');
+    CookieJar = toughCookie.CookieJar;
+    const xmldom = await import('@xmldom/xmldom');
+    DOMParser = xmldom.DOMParser;
+} else {
+    // Browser: use native DOMParser
+    DOMParser = window.DOMParser;
+}
 
 // Service providers properties
 const serviceProviders = {
@@ -35,12 +48,15 @@ export default class OSLCClient {
         this.spc = null;
         this.sp = null;
         this.ownerMap = new Map();
-        this.jar = new CookieJar();
+        this.isNodeEnvironment = isNodeEnvironment;
+        
+        if (isNodeEnvironment) {
+            this.jar = new CookieJar();
+        }
 
         // Create a base configuration
         const baseConfig = {
             timeout: 30000,
-            keepAlive: true,
             headers: {
                 'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5, */*;q=0.1',
                 'OSLC-Core-Version': '2.0'
@@ -48,17 +64,17 @@ export default class OSLCClient {
             validateStatus: status => status === 401 || status < 400 // Accept all 2xx responses
         };
 
-        // Check if we're in Node.js (where 'window' is undefined)
-        if (typeof window === 'undefined') {
-            // We are in Node.js -> use a cookie jar
+        // Configure for Node.js or Browser
+        if (isNodeEnvironment) {
+            // Node.js: use a cookie jar and keep-alive
+            baseConfig.keepAlive = true;
             baseConfig.jar = this.jar;
+            this.client = wrapper(axios.create(baseConfig));
         } else {
-            // We are in the Browser -> use withCredentials
+            // Browser: use withCredentials for automatic cookie handling
             baseConfig.withCredentials = true;
+            this.client = axios.create(baseConfig);
         }
-
-        // Create axios instance with cookie agents
-        this.client = wrapper(axios.create(baseConfig));
 
         // Add the Configuration-Context header if one is given
         if (configuration_context) {
@@ -70,18 +86,7 @@ export default class OSLCClient {
             async response => {
                 const originalRequest = response.config;
                 const wwwAuthenticate = response?.headers?.['www-authenticate'];
-                /*
-                const allCookies = await originalRequest.jar.store.getAllCookies();
-                console.log('\n--- ALL COOKIES IN JAR ---');                    
-                allCookies.forEach((cookie, index) => {
-                    console.log(`\n[${index + 1}] ${cookie.key}=${cookie.value}`);
-                    console.log(`   Domain: ${cookie.domain}`);
-                    console.log(`   Path: ${cookie.path}`);
-                    console.log(`   Expires: ${cookie.expires}`);
-                    console.log(`   HTTP Only: ${cookie.httpOnly}`);
-                    console.log(`   Secure: ${cookie.secure}`);
-                });
-                */
+                
                 // Check if this is a JEE Forms authentication challenge
                 if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {  
                     try {                        
@@ -89,18 +94,27 @@ export default class OSLCClient {
                         let url = new URL(response.config.url);
                         const paths = url.pathname.split('/');
                         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
-                        response = await this.client.post(url.toString(), {
-                            'j_username': this.userid,
-                            'j_password': this.password
-                        }, {
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            maxRedirects: 0,
-                            validateStatus: (status) => status === 302 // for successful login
-                        });
+                        
+                        // In browser, form-based auth may require a backend proxy due to CORS
+                        if (!isNodeEnvironment) {
+                            console.warn('Form-based authentication in browser requires CORS-enabled backend or proxy');
+                        }
+                        
+                        response = await this.client.post(url.toString(), 
+                            new URLSearchParams({
+                                'j_username': this.userid,
+                                'j_password': this.password
+                            }).toString(),
+                            {
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded'
+                                },
+                                maxRedirects: 0,
+                                validateStatus: (status) => status === 302 // for successful login
+                            }
+                        );
                         // After successful login, retry the original request with updated cookies
-                        response = await this.client(originalRequest);
+                        response = await this.client.request(originalRequest);
                         return response;
                     } catch (error) {
                         console.error('Error during JEE authentication:', error.message);
@@ -110,30 +124,33 @@ export default class OSLCClient {
                     const token_uri = wwwAuthenticate.match(/token_uri="([^"]+)"/)[1];
                     try {
                         // Refresh the token using the provided token_uri
-                        const response = await axios.post(token_uri,
-                        new URLSearchParams({
-                            username: this.userid,
-                            password: this.password,
-                        }), {
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                                'Accept': 'test/plain',
-                        }});
+                        const tokenResponse = await this.client.post(token_uri,
+                            new URLSearchParams({
+                                username: this.userid,
+                                password: this.password,
+                            }).toString(),
+                            {
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'Accept': 'text/plain',
+                                }
+                            }
+                        );
                         // retry the original request with the new token
-                        const newToken = response.data; // Refresh token
-                        originalRequest.config.headers['Authorization'] = `Bearer ${newToken}`;
-                        return await axios.client(originalRequest); // Retry the request
+                        const newToken = tokenResponse.data; // Refresh token
+                        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+                        return await this.client.request(originalRequest); // Retry the request
                     } catch (error) {
                         console.error('Error during jauth realm authentication:', error.message);
                         return Promise.reject(error);
                     }  
                 } else if (response.status === 401) {
-                    // Retry with basic authentication for e.g., Jazz Authorizaiton Server
-                    response.config.auth = {
+                    // Retry with basic authentication for e.g., Jazz Authorization Server
+                    originalRequest.auth = {
                         username: this.userid,
                         password: this.password
                     };
-                    return await axios.request(response.config);
+                    return await this.client.request(originalRequest);
                 } else {
                     // No authentication challenge, proceed with the response
                     return response;
@@ -322,8 +339,23 @@ export default class OSLCClient {
         const headers = {
             'Accept': 'application/rdf+xml; charset=utf-8',
             'OSLC-Core-Version': oslc_version,
-            'X-Jazz-CSRF-Prevent': this.jar.getCookiesSync(url).find(cookie => cookie.key === 'JSESSIONID').value
+            'X-Jazz-CSRF-Prevent': '1'
         };
+        
+        // In Node.js, try to get JSESSIONID from cookie jar
+        if (isNodeEnvironment && this.jar) {
+            try {
+                const cookies = this.jar.getCookiesSync(url);
+                const sessionCookie = cookies.find(cookie => cookie.key === 'JSESSIONID');
+                if (sessionCookie) {
+                    headers['X-Jazz-CSRF-Prevent'] = sessionCookie.value;
+                }
+            } catch (error) {
+                // If cookie retrieval fails, continue with default value
+                console.debug('Could not retrieve JSESSIONID from cookie jar:', error.message);
+            }
+        }
+        
         try {
             const response = await this.client.delete(url, { headers });
             if (response.status !== 200 && response.status !== 204) {
@@ -410,7 +442,8 @@ export default class OSLCClient {
         if (response.status !== 200) {
             return 'Unknown';
         }        
-        const contentLocation = response.headers['content-location'] || url;        
+        const contentLocation = response.headers['content-location'] || url;
+        const contentType = response.headers['content-type'];
         const store = $rdf.graph();
         try {
             $rdf.parse(response.data, store, url, contentType)

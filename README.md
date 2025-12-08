@@ -6,12 +6,18 @@
 
 An OSLC client API Node.js module
 
-oslc-client is a JavaScript Node.js module supporting OSLC client and server development. The client API exposes the OSLC core and domain capabilities through a simple JavaScript API on the OSLC REST services. 
+oslc-client is a JavaScript Node.js module supporting OSLC client and server development. The client API exposes the OSLC 
+core and domain capabilities through a simple JavaScript API on the OSLC REST services. 
 
-oslc-client exploits the dynamic and asynchronous capabilities of JavaScript and Node.js to build and API that can easily adapt to any OSLC domain, extensions to domains, and/or integrations between domains. 
+oslc-client exploits the dynamic and asynchronous capabilities of JavaScript and Node.js to build and API that can easily 
+adapt to any OSLC domain, extensions to domains, and/or integrations between domains. 
 
-This vesion updates previous 2.x.x versions to use axios for HTTP access and modern JavaScript async/await to handle
+This version updates previous 2.x.x versions to use axios for HTTP access and modern JavaScript async/await to handle
 asynchronous operations.
+
+Version 3.0.1 is a maintenance release that alows oslc-client run in the browser or in a node.js environment.
+
+* 
 
 ## Usage
 

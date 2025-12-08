@@ -4,12 +4,10 @@
 'use strict';
 
 import OSLCClient from '../OSLCClient.js';
-import { oslc_cm } from '../namespaces.js';
-import Compact from '../Compact.js';
 
 // process command line arguments
 var args = process.argv.slice(2)
-if (args.length != 3) {
+if (args.length !== 3) {
 	console.log("Usage: node simpleCMRead.js baseURL resourceURI userId password")
 	process.exit(1)
 }

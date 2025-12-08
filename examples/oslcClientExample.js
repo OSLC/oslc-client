@@ -1,9 +1,8 @@
 import OSLCClient from '../OSLCClient.js';
-import * as $rdf from "rdflib";
 
 // process command line arguments
 var args = process.argv.slice(2)
-if (args.length != 5) {
+if (args.length !== 5) {
 	console.log('Usage: node oslcReauestGet.js baseURI resourceURI projectAreaName userId password')
 	process.exit(1)
 }
