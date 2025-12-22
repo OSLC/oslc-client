@@ -35,5 +35,4 @@ jobs:
   
       - run: npm run build --if-present
 
-      # TODO: add tests
-      # - run: npm test
+      - run: npm test -- __tests__/rdflib.integration.test.js

@@ -42,7 +42,7 @@
     "@xmldom/xmldom": "^0.9.8",
     "axios": "^1.13.2",
     "axios-cookiejar-support": "^6.0.4",
-    "rdflib": "2.3.0-08f819ce",
+    "rdflib": "2.3.2",
     "tough-cookie": "^6.0.0"
   },
   "devDependencies": {
