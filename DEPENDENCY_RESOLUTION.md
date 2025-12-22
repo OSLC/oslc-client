@@ -10,7 +10,9 @@ The `standard-error` package was present as a deep transitive dependency in olde
 The `request` package (now deprecated) had multiple transitive dependencies that eventually included `standard-error`.
 
 ## Resolution
-**Resolved by PR #35:** Upgrade of `rdflib` from version 2.3.0 to 2.3.2
+**Resolved by PR #35:** Upgrade of `rdflib` from version 2.3.0-08f819ce (which had the issue) to 2.3.2
+
+Note: The problematic dependency was present in rdflib versions 2.2.x and earlier through the old jsonld→request chain. Version 2.3.0 may have also been affected depending on its dependency resolution.
 
 ### What Changed
 The newer version of rdflib uses a modernized dependency chain:
