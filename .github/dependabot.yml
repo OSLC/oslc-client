@@ -1,0 +1,37 @@
+version: 2
+updates:
+  - package-ecosystem: "npm" # See documentation for possible values
+    directory: "/" # Location of package manifests
+    open-pull-requests-limit: 99
+    schedule:
+      interval: "daily"
+    groups:
+      deps-angular:
+        patterns:
+          - "@angular/*"
+        update-types:
+          - "minor"
+          - "patch"
+      deps-typescript:
+        patterns:
+          - "ts-*"
+          - "tslib"
+          - "tslint"
+          - "typescript"
+        update-types:
+          - "minor"
+          - "patch"
+      deps-testing:
+        patterns:
+          - "karma*"
+          - "karma-*"
+          - "jasmine-*"
+          - "@types/jasmine*"
+      deps-webcomponents:
+        patterns:
+          - "@webcomponents/*"
+  - package-ecosystem: "github-actions" # See documentation for possible values
+    directory: "/" # Location of package manifests
+    open-pull-requests-limit: 99
+    schedule:
+      interval: "daily"
