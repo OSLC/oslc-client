@@ -8,6 +8,7 @@
 import OSLCClient from '../OSLCClient.js';
 import OSLCResource from '../OSLCResource.js';
 import { oslc_cm, rdf, dcterms } from '../namespaces.js';
+import * as $rdf from 'rdflib';
 
 
 var args = process.argv.slice(2);
@@ -95,6 +96,7 @@ try {
 	results = await client.putResource(changeRequest);
 } catch (err) {
 	console.error('Could not update resource: '+err);
+	console.log(changeRequest.store.serialize(null, 'application/rdf+xml'));
 }
 
 // all done

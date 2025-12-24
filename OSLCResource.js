@@ -34,7 +34,7 @@ import { dcterms, oslc } from './namespaces.js';
  * @author Jim Amsden
  * @class
  * @parm {string} uri - the URI sym of this resource
- * @param {Store} kb - the Knowledge Base that contains the resource RDF graph
+ * @param {Store} store - the Knowledge Base that contains the resource RDF graph
  */
 export default class OSLCResource {
   constructor(uri=null, store=null, etag=null) {
