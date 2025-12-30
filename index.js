@@ -21,3 +21,4 @@
 // This is what is imported when the module is required.
 export { default as OSLCClient } from './OSLCClient.js';
 export { default } from './OSLCClient.js';
+export { default as LDMClient } from './LDMClient.js';

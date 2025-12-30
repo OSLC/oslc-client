@@ -177,6 +177,32 @@ export default class OSLCResource {
     return linkTypes;
   }
 
+  getOutgoingLinks(linkTypes = null) {
+    let linkTypeSet = null;
+    if (linkTypes != null) {
+      if (linkTypes instanceof Set) {
+        linkTypeSet = linkTypes;
+      } else if (Array.isArray(linkTypes)) {
+        linkTypeSet = new Set(linkTypes);
+      } else {
+        throw new Error('linkTypes must be an Array, Set, or null');
+      }
+    }
+
+    let result = [];
+    let statements = this.store.statementsMatching(this.uri, undefined, undefined);
+    for (let statement of statements) {
+      if (!(statement.object instanceof $rdf.NamedNode)) continue;
+      if (linkTypeSet && !linkTypeSet.has(statement.predicate.value)) continue;
+      result.push({
+        sourceURL: statement.subject.value,
+        linkType: statement.predicate.value,
+        targetURL: statement.object.value
+      });
+    }
+    return result;
+  }
+
   /**
    * Return an Array of name-value pairs for all properties of by this resource
    */
