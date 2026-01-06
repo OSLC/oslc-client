@@ -34,6 +34,101 @@ const serviceProviders = {
 
 
 
+const OSLC_CLIENT_LOG_REDACT_HEADER_KEYS = new Set(['authorization', 'cookie', 'set-cookie']);
+
+function oslcClientSummarizeHeadersForLog(headers) {
+    if (!headers || typeof headers !== 'object') return '';
+
+    const out = {};
+    const tryAdd = (k, v) => {
+        const key = String(k || '').trim();
+        if (!key) return;
+        const lower = key.toLowerCase();
+        if (OSLC_CLIENT_LOG_REDACT_HEADER_KEYS.has(lower)) {
+            out[key] = '[redacted]';
+            return;
+        }
+        const val = Array.isArray(v) ? v.join(',') : String(v ?? '');
+        out[key] = val.length > 200 ? `${val.substring(0, 200)}…` : val;
+    };
+
+    if (headers.common && typeof headers.common === 'object') {
+        for (const [k, v] of Object.entries(headers.common)) {
+            tryAdd(k, v);
+        }
+    }
+
+    for (const [k, v] of Object.entries(headers)) {
+        if (k === 'common') continue;
+        if (k === 'delete' || k === 'get' || k === 'head' || k === 'post' || k === 'put' || k === 'patch') continue;
+        tryAdd(k, v);
+    }
+
+    try {
+        const json = JSON.stringify(out);
+        return json.length > 800 ? `${json.substring(0, 800)}…` : json;
+    } catch {
+        return '';
+    }
+}
+
+function oslcClientSummarizeBodyForLog(data) {
+    if (data == null) return '';
+
+    let text = '';
+    if (typeof data === 'string') {
+        text = data;
+    } else {
+        try {
+            text = JSON.stringify(data);
+        } catch {
+            text = String(data);
+        }
+    }
+
+    text = String(text || '').trim();
+    if (!text) return '';
+    const max = 1200;
+    return text.length > max ? `${text.substring(0, max)}…` : text;
+}
+
+function oslcClientLogHttpError(label, errorOrResponse) {
+    const isAxiosError = !!errorOrResponse?.isAxiosError;
+    const config = isAxiosError ? errorOrResponse?.config : errorOrResponse?.config;
+    const response = isAxiosError ? errorOrResponse?.response : errorOrResponse;
+
+    const method = String(config?.method || 'GET').toUpperCase();
+    const url = String(config?.url || '').trim();
+
+    let headers = config?.headers;
+    if (headers && typeof headers.toJSON === 'function') {
+        headers = headers.toJSON();
+    }
+    const headersText = oslcClientSummarizeHeadersForLog(headers);
+
+    const status = response?.status;
+    const bodyText = oslcClientSummarizeBodyForLog(response?.data);
+
+    const parts = [];
+    if (method || url) parts.push(`request=${method} ${url}`.trim());
+    if (headersText) parts.push(`headers=${headersText}`);
+    if (typeof status === 'number') parts.push(`status=${status}`);
+    if (bodyText) parts.push(`body=${bodyText}`);
+
+    const msgRaw = String(errorOrResponse?.message || '').trim();
+    if (msgRaw) {
+        const maxMsg = 300;
+        const msg = msgRaw.length > maxMsg ? `${msgRaw.substring(0, maxMsg)}…` : msgRaw;
+        parts.push(`message=${msg}`);
+    }
+
+    const summary = parts.join(' ');
+
+    console.error(`[OSLCClient][HTTP ERROR] ${label}${summary ? `: ${summary}` : ''}`);
+}
+
+
+
 /**
  * An OSLCClient provides a simple interface to access OSLC resources
  * and perform operations like querying, creating, and updating resources.
@@ -117,7 +212,7 @@ export default class OSLCClient {
                         response = await this.client.request(originalRequest);
                         return response;
                     } catch (error) {
-                        console.error('Error during JEE authentication:', error.message);
+                        oslcClientLogHttpError('Error during JEE authentication', error);
                         return Promise.reject(error);
                     }
                 } else if (response.status === 401 &&  wwwAuthenticate?.includes('jauth realm')) {
@@ -141,7 +236,7 @@ export default class OSLCClient {
                         originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
                         return await this.client.request(originalRequest); // Retry the request
                     } catch (error) {
-                        console.error('Error during jauth realm authentication:', error.message);
+                        oslcClientLogHttpError('Error during jauth realm authentication', error);
                         return Promise.reject(error);
                     }  
                 } else if (response.status === 401) {
@@ -175,7 +270,7 @@ export default class OSLCClient {
             resource = await this.getResource(`${this.base_url}/rootservices`);
             this.rootservices = new RootServices(resource.getURI(), resource.store, resource.etag);
         } catch (error) {
-            console.error('Error fetching rootservices:', error);
+            oslcClientLogHttpError('Error fetching rootservices', error);
             throw new Error('Failed to fetch rootservices document');
         }
 
@@ -188,7 +283,7 @@ export default class OSLCClient {
             resource = await this.getResource(spcURL);
             this.spc = new ServiceProviderCatalog(resource.getURI(), resource.store, resource.etag);
         } catch (error) {
-            console.error('Error fetching ServiceProviderCatalog:', error);
+            oslcClientLogHttpError('Error fetching ServiceProviderCatalog', error);
         }
 
         // Lookup the the serviceProviderName in the ServiceProviderCatalog
@@ -217,8 +312,13 @@ export default class OSLCClient {
         try {
             response = await this.client.get(url, { headers });
         } catch (error) {
-            console.error('Error fetching resource:', error);
+            oslcClientLogHttpError('Error fetching resource', error);
             throw error;
+        }
+
+        if (response?.status >= 400) {
+            oslcClientLogHttpError('Error fetching resource', response);
+            throw new Error(`Request failed with status code ${response.status}`);
         }
         const etag = response.headers.etag;
         const contentType = response.headers['content-type'];
@@ -260,8 +360,13 @@ export default class OSLCClient {
         try {
             response = await this.client.get(url, { headers });
         } catch (error) {
-            console.error('Error fetching Compact resource:', error);
+            oslcClientLogHttpError('Error fetching Compact resource', error);
             throw error;
+        }
+
+        if (response?.status >= 400) {
+            oslcClientLogHttpError('Error fetching Compact resource', response);
+            throw new Error(`Request failed with status code ${response.status}`);
         }
         const etag = response.headers.etag;
         const contentType = response.headers['content-type'];
@@ -292,6 +397,7 @@ export default class OSLCClient {
         const response = await this.client.put(url, body, { headers });
         
         if (response.status !== 200 && response.status !== 201) {
+            oslcClientLogHttpError('Failed to update resource', response);
             throw new Error(
                 `Failed to update resource ${url}. Status: ${response.status}\n${response.data}`
             );
@@ -319,10 +425,11 @@ export default class OSLCClient {
         try {
             response = await this.client.post(creationFactory, body, { headers });
             if (response.status !== 200 && response.status !== 201) {
+                oslcClientLogHttpError('Failed to create resource', response);
                 throw new Error(`Failed to create resource. Status: ${response.status}\n${response.data}`);
             }        
         } catch (error) {
-            console.error('Error creating resource:', error);
+            oslcClientLogHttpError('Error creating resource', error);
             throw error;
         }        
         const location = response.headers.location;
@@ -359,10 +466,11 @@ export default class OSLCClient {
         try {
             const response = await this.client.delete(url, { headers });
             if (response.status !== 200 && response.status !== 204) {
+                oslcClientLogHttpError('Failed to delete resource', response);
                 throw new Error(`Failed to delete resource. Status: ${response.status}\n${response.data}`);
             }
         } catch (error) {
-            console.error('Error deleting resource:', error);
+            oslcClientLogHttpError('Error deleting resource', error);
             throw error;
         }           
         return undefined;
@@ -408,6 +516,7 @@ export default class OSLCClient {
         let url = `${queryBase}?${params.toString()}`;
         let response = await this.client.get(url, { headers });
         if (response.status !== 200) {
+            oslcClientLogHttpError('Failed to query resource', response);
             throw new Error(`Failed to query resource. Status: ${response.status}\n${response.data}`);
         }
         const contentType = response.headers['content-type'];
@@ -440,6 +549,7 @@ export default class OSLCClient {
         const response = await this.client.get(url, { headers });
         
         if (response.status !== 200) {
+            oslcClientLogHttpError('Failed to get owner (non-200 response)', response);
             return 'Unknown';
         }        
         const contentLocation = response.headers['content-location'] || url;
