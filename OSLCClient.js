@@ -134,6 +134,7 @@ function oslcClientLogHttpError(label, errorOrResponse) {
  * and perform operations like querying, creating, and updating resources.
  * It handles authentication, service provider discovery, and resource management.
  */
+
 export default class OSLCClient {
     constructor(user, password, configuration_context = null) {
         this.userid = user;
@@ -153,7 +154,7 @@ export default class OSLCClient {
         const baseConfig = {
             timeout: 30000,
             headers: {
-                'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5, */*;q=0.1',
+                'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5',
                 'OSLC-Core-Version': '2.0'
             },
             validateStatus: status => status === 401 || status < 400 // Accept all 2xx responses
