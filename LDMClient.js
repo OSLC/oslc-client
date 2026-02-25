@@ -1,20 +1,7 @@
-import axios from 'axios';
 import * as $rdf from 'rdflib';
+import OSLCClient from './OSLCClient.js';
 
-// Conditional imports for Node.js only
-let wrapper, CookieJar, HttpsAgent;
-const isNodeEnvironment = typeof window === 'undefined';
-
-if (isNodeEnvironment) {
-  const cookiejarSupport = await import('axios-cookiejar-support');
-  wrapper = cookiejarSupport.wrapper;
-  const toughCookie = await import('tough-cookie');
-  CookieJar = toughCookie.CookieJar;
-  const https = await import('https');
-  HttpsAgent = https.Agent;
-}
-
-const DEFAULT_ACCEPT = 'text/turtle, application/rdf+xml;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, */*;q=0.1';
+const DEFAULT_ACCEPT = 'text/turtle, application/rdf+xml;q=0.9, application/ld+json;q=0.8, application/json;q=0.7';
 
 const INVERSE_LINK_TYPES = new Map([
   ['http://open-services.net/ns/core#related', 'http://open-services.net/ns/core#related'],
@@ -50,7 +37,10 @@ const INVERSE_LINK_TYPES = new Map([
   ['http://open-services.net/ns/qm#affectedByChangeRequest', 'http://open-services.net/ns/cm#affectsTestResult'],
 
   ['http://open-services.net/ns/cm#affectedByDefect', 'http://open-services.net/ns/cm#affectsPlanItem'],
-  ['http://open-services.net/ns/cm#affectsPlanItem', 'http://open-services.net/ns/cm#affectedByDefect']
+  ['http://open-services.net/ns/cm#affectsPlanItem', 'http://open-services.net/ns/cm#affectedByDefect'],
+
+  ['http://jazz.net/ns/rm/navigation#parent', 'http://jazz.net/ns/rm/navigation#children'],
+  ['http://jazz.net/ns/rm/navigation#children', 'http://jazz.net/ns/rm/navigation#parent']
 ]);
 
 function normalizeBaseUrl(url) {
@@ -78,170 +68,34 @@ function parseRdfTriples({ data, contentType, baseIRI }) {
   }));
 }
 
-export default class LDMClient {
-  constructor(LDMServerBaseURL, options = {}) {
-    this.LDMServerBaseURL = normalizeBaseUrl(LDMServerBaseURL);
-    this.userid = options?.user || options?.userid || null;
-    this.password = options?.password || null;
-    this.insecureTLS = options?.insecureTLS === true;
-    this.useCookieJar = options?.useCookieJar !== false;
-    this.authorization = options?.authorization || null;
+/**
+ * LDMClient extends OSLCClient to provide Link Discovery Management (LDM) functionality.
+ * It inherits authentication handling from OSLCClient and adds methods for discovering
+ * incoming links to OSLC resources.
+ */
+export default class LDMClient extends OSLCClient {
+  /**
+   * Create an LDMClient instance.
+   * @param {string} user - Username for authentication
+   * @param {string} password - Password for authentication
+   * @param {string|null} configurationContext - GCM configuration context URL (optional)
+   * @param {string} ldmServerBaseUrl - Base URL of the LDM server (e.g., https://server/ldm)
+   */
+  constructor(user, password, configurationContext, ldmServerBaseUrl) {
+    // Call OSLCClient constructor to set up authentication and axios client
+    super(user, password, configurationContext);
 
-    const baseConfig = {
-      timeout: 30000,
-      headers: {
-        'Accept': DEFAULT_ACCEPT,
-        'OSLC-Core-Version': '2.0'
-      },
-      // Accept 401 so the response interceptor can handle auth challenges.
-      validateStatus: status => status === 401 || status < 400
-    };
-
-    if (isNodeEnvironment) {
-      if (this.insecureTLS && HttpsAgent) {
-        baseConfig.httpsAgent = new HttpsAgent({ rejectUnauthorized: false });
-      }
-
-      const shouldUseCookieJar = this.useCookieJar && !this.insecureTLS;
-
-      if (shouldUseCookieJar) {
-        this.jar = new CookieJar();
-        baseConfig.keepAlive = true;
-        baseConfig.jar = this.jar;
-        this.client = wrapper(axios.create(baseConfig));
-      } else {
-        this.client = axios.create(baseConfig);
-      }
-    } else {
-      baseConfig.withCredentials = true;
-      this.client = axios.create(baseConfig);
-    }
-
-    if (this.authorization) {
-      this.client.defaults.headers.common['Authorization'] = this.authorization;
-    }
-
-    this.client.interceptors.response.use(async response => {
-      const originalRequest = response.config;
-      const wwwAuthenticate = response?.headers?.['www-authenticate'];
-      const debugLqe = typeof process !== 'undefined' && process?.env?.DEBUG_LQE === 'true';
-
-      if (response.status !== 401) {
-        return response;
-      }
-      if (originalRequest?._oslcClientRetry) {
-        return response;
-      }
-
-      if (debugLqe) {
-        console.debug('[LDMClient] 401 challenge received');
-        console.debug(`[LDMClient] url: ${originalRequest?.url}`);
-        console.debug(`[LDMClient] www-authenticate: ${wwwAuthenticate || ''}`);
-        console.debug(`[LDMClient] x-com-ibm-team-repository-web-auth-msg: ${response?.headers?.['x-com-ibm-team-repository-web-auth-msg'] || ''}`);
-      }
-
-      // JEE Form auth (Jazz apps like CCM/RM/QM)
-      if (response?.headers?.['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
-        if (!this.userid || !this.password) {
-          return response;
-        }
-
-        try {
-          const url = new URL(originalRequest.url);
-          const paths = url.pathname.split('/');
-          url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
-
-          await this.client.post(
-            url.toString(),
-            new URLSearchParams({
-              j_username: this.userid,
-              j_password: this.password
-            }).toString(),
-            {
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-              },
-              maxRedirects: 0,
-              validateStatus: status => status === 302
-            }
-          );
-
-          originalRequest._oslcClientRetry = true;
-          return await this.client.request(originalRequest);
-        } catch (error) {
-          return Promise.reject(error);
-        }
-      }
-
-      // Jazz Authorization Server token exchange
-      if (wwwAuthenticate?.includes('jauth realm')) {
-        if (!this.userid || !this.password) {
-          return response;
-        }
-
-        const match = wwwAuthenticate.match(/token_uri="([^"]+)"/);
-        let tokenUri = match?.[1];
-        if (!tokenUri) {
-          return response;
-        }
-
-        try {
-          tokenUri = new URL(tokenUri, originalRequest.url).toString();
-        } catch {
-          // ignore
-        }
-
-        try {
-          if (debugLqe) {
-            console.debug(`[LDMClient] token_uri: ${tokenUri}`);
-          }
-          const tokenResponse = await this.client.post(
-            tokenUri,
-            new URLSearchParams({
-              username: this.userid,
-              password: this.password
-            }).toString(),
-            {
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'text/plain',
-                'X-Jazz-CSRF-Prevent': '1'
-              }
-            }
-          );
-
-          const token = typeof tokenResponse.data === 'string' ? tokenResponse.data.trim() : tokenResponse.data;
-          if (debugLqe) {
-            console.debug(`[LDMClient] token exchange status: ${tokenResponse.status}`);
-          }
-          originalRequest._oslcClientRetry = true;
-          originalRequest.headers = originalRequest.headers || {};
-          originalRequest.headers['Authorization'] = `Bearer ${token}`;
-          if (debugLqe) {
-            console.debug('[LDMClient] retrying original request with Bearer token');
-          }
-          return await this.client.request(originalRequest);
-        } catch (error) {
-          return Promise.reject(error);
-        }
-      }
-
-      // Basic auth fallback
-      if (this.userid && this.password) {
-        originalRequest._oslcClientRetry = true;
-        originalRequest.auth = {
-          username: this.userid,
-          password: this.password
-        };
-        return await this.client.request(originalRequest);
-      }
-
-      return response;
-    });
-
+    this.LDMServerBaseURL = normalizeBaseUrl(ldmServerBaseUrl);
     this._warnedMissingInverseLinkTypes = new Set();
   }
 
+  /**
+   * Get incoming links to one or more target resources.
+   * @param {string[]} targetResourceURLs - Array of resource URLs to find incoming links for
+   * @param {string[]} linkTypes - Optional array of link type URIs to filter by
+   * @param {string|null} configurationContext - Optional configuration context (overrides constructor value)
+   * @returns {Promise<Array<{sourceURL: string, linkType: string, targetURL: string}>>}
+   */
   async getIncomingLinks(targetResourceURLs, linkTypes = [], configurationContext = null) {
     if (!Array.isArray(targetResourceURLs) || targetResourceURLs.length === 0) {
       throw new Error('targetResourceURLs must be a non-empty array');
@@ -250,13 +104,21 @@ export default class LDMClient {
       throw new Error('linkTypes must be an array');
     }
 
+    // Use provided configurationContext or fall back to the one set in constructor
+    const effectiveConfigContext = configurationContext || this.configuration_context;
+
     const isLqe = this.LDMServerBaseURL.includes('/lqe');
     if (isLqe) {
-      return this.#getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext);
+      return this.#getIncomingLinksViaLqe(targetResourceURLs, linkTypes, effectiveConfigContext);
     }
-    return this.#getIncomingLinksViaLdm(targetResourceURLs, linkTypes, configurationContext);
+    return this.#getIncomingLinksViaLdm(targetResourceURLs, linkTypes, effectiveConfigContext);
   }
 
+  /**
+   * Invert a list of triples, swapping source and target and mapping to inverse link types.
+   * @param {Array<{sourceURL: string, linkType: string, targetURL: string}>} triples
+   * @returns {Array<{targetURL: string, inverseLinkType: string, sourceURL: string}>}
+   */
   invert(triples) {
     if (!Array.isArray(triples)) {
       throw new Error('triples must be an array');
@@ -310,7 +172,9 @@ export default class LDMClient {
   async #getIncomingLinksViaLdm(targetResourceURLs, linkTypes, configurationContext) {
     const url = `${this.LDMServerBaseURL}/discover-links`;
 
-    const headers = {};
+    const headers = {
+      'Accept': DEFAULT_ACCEPT
+    };
     if (configurationContext) {
       headers['Configuration-Context'] = asUrlString(configurationContext, 'configurationContext');
     }
@@ -394,8 +258,7 @@ export default class LDMClient {
     }
 
     const candidates = [
-      `${this.LDMServerBaseURL}/sparql`/*,
-      `${this.LDMServerBaseURL}/spqrql-variable-config`*/
+      `${this.LDMServerBaseURL}/sparql`
     ];
 
     const baseHeaders = {
