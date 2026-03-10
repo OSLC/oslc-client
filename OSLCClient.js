@@ -182,21 +182,21 @@ export default class OSLCClient {
             async response => {
                 const originalRequest = response.config;
                 const wwwAuthenticate = response?.headers?.['www-authenticate'];
-                
+
                 // Check if this is a JEE Forms authentication challenge
-                if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {  
-                    try {                        
+                if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
+                    try {
                         // Perform the login (JEE form auth typically uses j_username and j_password)
                         let url = new URL(response.config.url);
                         const paths = url.pathname.split('/');
                         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
-                        
+
                         // In browser, form-based auth may require a backend proxy due to CORS
                         if (!isNodeEnvironment) {
                             console.warn('Form-based authentication in browser requires CORS-enabled backend or proxy');
                         }
-                        
-                        response = await this.client.post(url.toString(), 
+
+                        response = await this.client.post(url.toString(),
                             new URLSearchParams({
                                 'j_username': this.userid,
                                 'j_password': this.password
@@ -212,45 +212,52 @@ export default class OSLCClient {
                         // After successful login, retry the original request with updated cookies
                         response = await this.client.request(originalRequest);
                         return response;
-                    } catch (error) {
-                        oslcClientLogHttpError('Error during JEE authentication', error);
-                        return Promise.reject(error);
+                    } catch (jeeError) {
+                        // JEE Form auth failed — server may use JAS or Basic auth instead.
+                        // Fall through to try other auth methods before giving up.
+                        oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
                     }
-                } else if (response.status === 401 &&  wwwAuthenticate?.includes('jauth realm')) {
-                    const token_uri = wwwAuthenticate.match(/token_uri="([^"]+)"/)[1];
-                    try {
-                        // Refresh the token using the provided token_uri
-                        const tokenResponse = await this.client.post(token_uri,
-                            new URLSearchParams({
-                                username: this.userid,
-                                password: this.password,
-                            }).toString(),
-                            {
-                                headers: {
-                                    'Content-Type': 'application/x-www-form-urlencoded',
-                                    'Accept': 'text/plain',
+                }
+
+                if (wwwAuthenticate?.includes('jauth realm')) {
+                    const token_uri = wwwAuthenticate.match(/token_uri="([^"]+)"/)?.[1];
+                    if (token_uri) {
+                        try {
+                            // Refresh the token using the provided token_uri
+                            const tokenResponse = await this.client.post(token_uri,
+                                new URLSearchParams({
+                                    username: this.userid,
+                                    password: this.password,
+                                }).toString(),
+                                {
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                        'Accept': 'text/plain',
+                                    }
                                 }
-                            }
-                        );
-                        // retry the original request with the new token
-                        const newToken = tokenResponse.data; // Refresh token
-                        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-                        return await this.client.request(originalRequest); // Retry the request
-                    } catch (error) {
-                        oslcClientLogHttpError('Error during jauth realm authentication', error);
-                        return Promise.reject(error);
-                    }  
-                } else if (response.status === 401) {
-                    // Retry with basic authentication for e.g., Jazz Authorization Server
+                            );
+                            // retry the original request with the new token
+                            const newToken = tokenResponse.data; // Refresh token
+                            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+                            return await this.client.request(originalRequest); // Retry the request
+                        } catch (error) {
+                            oslcClientLogHttpError('Error during jauth realm authentication', error);
+                            return Promise.reject(error);
+                        }
+                    }
+                }
+
+                // Fallback: retry with Basic auth (works for JAS and other Basic-auth servers)
+                if (response.status === 401 || response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
                     originalRequest.auth = {
                         username: this.userid,
                         password: this.password
                     };
                     return await this.client.request(originalRequest);
-                } else {
-                    // No authentication challenge, proceed with the response
-                    return response;
                 }
+
+                // No authentication challenge, proceed with the response
+                return response;
             },
         );
     };
@@ -309,16 +316,21 @@ export default class OSLCClient {
             'OSLC-Core-Version': oslc_version
         };
         
-        let response         
+        let response
         try {
             response = await this.client.get(url, { headers });
         } catch (error) {
-            oslcClientLogHttpError('Error fetching resource', error);
+            const status = error?.response?.status || error?.status;
+            if (status !== 406) {
+                oslcClientLogHttpError('Error fetching resource', error);
+            }
             throw error;
         }
 
         if (response?.status >= 400) {
-            oslcClientLogHttpError('Error fetching resource', response);
+            if (response.status !== 406) {
+                oslcClientLogHttpError('Error fetching resource', response);
+            }
             throw new Error(`Request failed with status code ${response.status}`);
         }
         const etag = response.headers.etag;
@@ -357,16 +369,22 @@ export default class OSLCClient {
             'OSLC-Core-Version': oslc_version
         };
         
-        let response         
+        let response
         try {
             response = await this.client.get(url, { headers });
         } catch (error) {
-            oslcClientLogHttpError('Error fetching Compact resource', error);
+            // 4xx errors are expected for compact — resource may not support it
+            const status = error?.response?.status || error?.status;
+            if (!(status >= 400 && status < 500)) {
+                oslcClientLogHttpError('Error fetching Compact resource', error);
+            }
             throw error;
         }
 
         if (response?.status >= 400) {
-            oslcClientLogHttpError('Error fetching Compact resource', response);
+            if (!(response.status >= 400 && response.status < 500)) {
+                oslcClientLogHttpError('Error fetching Compact resource', response);
+            }
             throw new Error(`Request failed with status code ${response.status}`);
         }
         const etag = response.headers.etag;
@@ -375,7 +393,30 @@ export default class OSLCClient {
         // Create a new graph for this resource
         const graph = $rdf.graph();
         // contentType is application/x-oslc-compact+xml, but that is RDF/XML specific to OSLC Compact
-        $rdf.parse(response.data, graph, url, 'application/rdf+xml');
+        try {
+            $rdf.parse(response.data, graph, url, 'application/rdf+xml');
+        } catch (parseError) {
+            // rdflib may fail on RDF/XML with missing namespace declarations (e.g. ETM responses).
+            // Fall back to regex-based title extraction from the raw XML.
+            const text = typeof response.data === 'string' ? response.data : '';
+            const titleMatch = text.match(/<(?:[a-zA-Z_][\w.-]*:)?title[^>]*>([^<]+)<\/(?:[a-zA-Z_][\w.-]*:)?title>/);
+            const shortTitleMatch = text.match(/<(?:[a-zA-Z_][\w.-]*:)?shortTitle[^>]*>([^<]+)<\/(?:[a-zA-Z_][\w.-]*:)?shortTitle>/);
+            if (titleMatch || shortTitleMatch) {
+                // Inject extracted values into the graph so the Compact class can find them
+                const oslcNs = 'http://open-services.net/ns/core#';
+                const dctermsNs = 'http://purl.org/dc/terms/';
+                const subject = $rdf.sym(url);
+                if (titleMatch) {
+                    graph.add(subject, $rdf.sym(dctermsNs + 'title'), $rdf.lit(titleMatch[1].trim()));
+                }
+                if (shortTitleMatch) {
+                    graph.add(subject, $rdf.sym(oslcNs + 'shortTitle'), $rdf.lit(shortTitleMatch[1].trim()));
+                }
+            } else {
+                // No title found even via regex — re-throw so caller can handle
+                throw parseError;
+            }
+        }
         return new Compact(url, graph, etag);
     }
 
