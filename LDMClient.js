@@ -248,25 +248,36 @@ export default class LDMClient extends OSLCClient {
   }
 
   async #getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext) {
-    const sparql = this.#buildIncomingLinksSparql(targetResourceURLs, linkTypes);
+    const endpoint = `${this.LDMServerBaseURL}/incoming-links`;
 
     const debugLqe = typeof process !== 'undefined' && process?.env?.DEBUG_LQE === 'true';
     if (debugLqe) {
       console.debug(`[LDMClient] LQE base URL: ${this.LDMServerBaseURL}`);
-      console.debug('[LDMClient] SPARQL request body:');
-      console.debug(sparql);
+      console.debug(`[LDMClient] POST incoming-links to: ${endpoint}`);
     }
 
-    const candidates = [
-      `${this.LDMServerBaseURL}/sparql`
-    ];
+    // Build form-encoded body
+    const params = new URLSearchParams();
+    for (const url of targetResourceURLs) {
+      params.append('targetUrl', asUrlString(url, 'targetResourceURL'));
+    }
+    // linkType may be optional — omit when no specific types requested
+    if (Array.isArray(linkTypes) && linkTypes.length > 0) {
+      for (const lt of linkTypes) {
+        params.append('linkType', asUrlString(lt, 'linkType'));
+      }
+    }
+    if (configurationContext) {
+      params.append('oslc_config.context', asUrlString(configurationContext, 'configurationContext'));
+    }
 
-    const baseHeaders = {
-      'Accept': 'application/sparql-results+json',
-      'X-Jazz-CSRF-Prevent': '1'
+    const headers = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'X-Jazz-CSRF-Prevent': '1',
     };
     if (configurationContext) {
-      baseHeaders['Configuration-Context'] = asUrlString(configurationContext, 'configurationContext');
+      headers['Configuration-Context'] = asUrlString(configurationContext, 'configurationContext');
     }
 
     const hasAuthorizationHeader = () => {
@@ -278,169 +289,36 @@ export default class LDMClient extends OSLCClient {
       ? { username: this.userid, password: this.password }
       : undefined;
 
-    const postSparqlQueryBody = async endpoint => {
-      return await this.client.post(endpoint, sparql, {
-        auth: requestAuth,
-        headers: {
-          ...baseHeaders,
-          'Content-Type': 'application/sparql-query'
-        }
-      });
-    };
-
-    const postFormEncodedQuery = async endpoint => {
-      const body = new URLSearchParams({ query: sparql }).toString();
-      return await this.client.post(endpoint, body, {
-        auth: requestAuth,
-        headers: {
-          ...baseHeaders,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      });
-    };
-
-    const isMissingQueryStringError = err => {
-      const status = err?.response?.status;
-      if (status !== 400) return false;
-      const data = err?.response?.data;
-      const text = typeof data === 'string' ? data : (data ? JSON.stringify(data) : '');
-      const msg = err?.message || '';
-      return /does not contain a query string/i.test(text) || /does not contain a query string/i.test(msg);
-    };
-
-    let lastError;
-    for (const endpoint of candidates) {
-      try {
-        if (debugLqe) {
-          console.debug(`[LDMClient] POST SPARQL to: ${endpoint}`);
-        }
-        let response;
-        try {
-          response = await postSparqlQueryBody(endpoint);
-        } catch (err) {
-          if (isMissingQueryStringError(err)) {
-            response = await postFormEncodedQuery(endpoint);
-          } else {
-            throw err;
-          }
-        }
-        return this.#parseLqeResponseToTriples(response, endpoint);
-      } catch (err) {
-        lastError = err;
-      }
-    }
-
-    throw lastError || new Error('Failed to query LQE for incoming links');
-  }
-
-  #buildIncomingLinksSparql(targetResourceURLs, linkTypes) {
-    const objects = targetResourceURLs.map(u => `<${asUrlString(u, 'targetResourceURL')}>`).join(' ');
-
-    const whereParts = [`VALUES ?o { ${objects} }`, '?s ?p ?o .'];
-
-    if (Array.isArray(linkTypes) && linkTypes.length > 0) {
-      const predicates = linkTypes.map(u => `<${asUrlString(u, 'linkType')}>`).join(' ');
-      whereParts.unshift(`VALUES ?p { ${predicates} }`);
-    }
-
-    return `SELECT ?s ?p ?o WHERE { ${whereParts.join(' ')} }`;
-  }
-
-  #parseLqeResponseToTriples(response, baseIRI) {
-    const debugLqe = typeof process !== 'undefined' && process?.env?.DEBUG_LQE === 'true';
-    const contentType = response?.headers?.['content-type'] || '';
-    const data = response?.data;
-    const status = response?.status;
-    const wwwAuthenticate = response?.headers?.['www-authenticate'] || '';
-    const webAuthMsg = response?.headers?.['x-com-ibm-team-repository-web-auth-msg'] || '';
-
     if (debugLqe) {
-      console.debug(`[LDMClient] LQE response content-type: ${contentType}`);
-      console.debug(`[LDMClient] LQE response data type: ${typeof data}`);
+      console.debug(`[LDMClient] incoming-links request body: ${params.toString()}`);
     }
 
-    if (status === 401 || (typeof data === 'string' && /unauthorized/i.test(data))) {
-      const bodyText = typeof data === 'string' ? data.trim() : (data ? JSON.stringify(data) : '');
-      throw new Error(
-        `LQE unauthorized. status=${status}. content-type=${contentType}. ` +
-        `www-authenticate=${wwwAuthenticate}. ` +
-        `x-com-ibm-team-repository-web-auth-msg=${webAuthMsg}. ` +
-        (wwwAuthenticate?.includes('OAuth realm') ? 'Note: LQE is requesting OAuth Authorization; provide an Authorization header (e.g., Bearer token). ' : '') +
-        `body=${bodyText}`
-      );
-    }
+    try {
+      const response = await this.client.post(endpoint, params.toString(), {
+        auth: requestAuth,
+        headers
+      });
+      const data = response.data;
 
-    if (/sparql-results\+json/i.test(contentType) || /application\/json/i.test(contentType) || typeof data === 'object') {
-      return this.#parseSparqlResultsIntoTriples(data);
-    }
-
-    if (/text\/turtle/i.test(contentType) || /application\/rdf\+xml/i.test(contentType) || /application\/ld\+json/i.test(contentType)) {
-      return parseRdfTriples({ data, contentType, baseIRI });
-    }
-
-    if (typeof data === 'string') {
-      const trimmed = data.trim();
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        try {
-          return this.#parseSparqlResultsIntoTriples(JSON.parse(trimmed));
-        } catch (e) {
-          if (debugLqe) {
-            console.debug('[LDMClient] failed to JSON.parse response body');
-          }
-        }
-      }
-      if (trimmed.startsWith('@prefix') || trimmed.startsWith('<') || trimmed.includes('PREFIX ')) {
-        try {
-          return parseRdfTriples({ data, contentType: 'text/turtle', baseIRI });
-        } catch (e) {
-          if (debugLqe) {
-            console.debug('[LDMClient] failed to parse response body as turtle');
-          }
-        }
-      }
-    }
-
-    const snippet = typeof data === 'string' ? data.slice(0, 800) : JSON.stringify(data)?.slice(0, 800);
-    throw new Error(`Unexpected SPARQL results format. content-type=${contentType}. body=${snippet}`);
-  }
-
-  #parseSparqlResultsIntoTriples(results) {
-    let obj = results;
-    if (typeof obj === 'string') {
-      try {
-        obj = JSON.parse(obj);
-      } catch {
-        obj = null;
-      }
-    }
-
-    const bindings = obj?.results?.bindings || obj?.bindings;
-    if (!Array.isArray(bindings)) {
-      const rows = obj?.results;
-      if (Array.isArray(rows)) {
-        return rows
-          .map(r => ({
-            sourceURL: r?.s?.value || r?.s || r?.subject?.value || r?.subject,
-            linkType: r?.p?.value || r?.p || r?.predicate?.value || r?.predicate,
-            targetURL: r?.o?.value || r?.o || r?.object?.value || r?.object
-          }))
-          .filter(t => t.sourceURL && t.linkType && t.targetURL);
-      }
-
-      const debugLqe = typeof process !== 'undefined' && process?.env?.DEBUG_LQE === 'true';
       if (debugLqe) {
-        console.debug('[LDMClient] Unexpected SPARQL JSON shape');
-        console.debug(obj);
+        console.debug(`[LDMClient] incoming-links response: numberOfResults=${data?.numberOfResults}`);
       }
-      throw new Error('Unexpected SPARQL results format');
-    }
 
-    return bindings
-      .map(b => ({
-        sourceURL: b?.s?.value,
-        linkType: b?.p?.value,
-        targetURL: b?.o?.value
-      }))
-      .filter(t => t.sourceURL && t.linkType && t.targetURL);
+      if (data?.error) {
+        throw new Error(`LQE incoming-links error: ${data.error}`);
+      }
+
+      const results = data?.queryResults || [];
+      return results.map(r => ({
+        sourceURL: r.sourceUrl || '',
+        linkType: r.linkType || '',
+        targetURL: r.targetUrl || ''
+      }));
+    } catch (error) {
+      const msg = error?.response?.data?.error || error?.message || 'Unknown error';
+      const status = error?.response?.status;
+      throw new Error(`${status ? `status=${status} ` : ''}${msg}`);
+    }
   }
+
 }
