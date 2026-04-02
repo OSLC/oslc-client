@@ -261,11 +261,12 @@ export default class LDMClient extends OSLCClient {
     for (const url of targetResourceURLs) {
       params.append('targetUrl', asUrlString(url, 'targetResourceURL'));
     }
-    // linkType may be optional — omit when no specific types requested
-    if (Array.isArray(linkTypes) && linkTypes.length > 0) {
-      for (const lt of linkTypes) {
-        params.append('linkType', asUrlString(lt, 'linkType'));
-      }
+    // linkType is required by LQE — if none specified, send all known link types
+    const effectiveLinkTypes = (Array.isArray(linkTypes) && linkTypes.length > 0)
+      ? linkTypes
+      : [...INVERSE_LINK_TYPES.keys()];
+    for (const lt of effectiveLinkTypes) {
+      params.append('linkType', asUrlString(lt, 'linkType'));
     }
     if (configurationContext) {
       params.append('oslc_config.context', asUrlString(configurationContext, 'configurationContext'));
