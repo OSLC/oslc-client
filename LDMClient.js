@@ -297,7 +297,10 @@ export default class LDMClient extends OSLCClient {
     try {
       const response = await this.client.post(endpoint, params.toString(), {
         auth: requestAuth,
-        headers
+        headers,
+        // Override base validateStatus — don't accept 401 for LQE requests
+        // (LQE uses different auth from the app server)
+        validateStatus: status => status < 400
       });
       const data = response.data;
 
@@ -316,9 +319,12 @@ export default class LDMClient extends OSLCClient {
         targetURL: r.targetUrl || ''
       }));
     } catch (error) {
-      const msg = error?.response?.data?.error || error?.message || 'Unknown error';
       const status = error?.response?.status;
-      throw new Error(`${status ? `status=${status} ` : ''}${msg}`);
+      const msg = error?.response?.data?.error || error?.message || 'Unknown error';
+      throw new Error(
+        `request=POST ${endpoint} ` +
+        `${status ? `status=${status} ` : ''}${msg}`
+      );
     }
   }
 
