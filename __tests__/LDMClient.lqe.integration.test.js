@@ -4,7 +4,7 @@ const RUN = process.env.RUN_LQE_INTEGRATION_TESTS === 'true';
 
 const describeIf = RUN ? describe : describe.skip;
 
-describeIf('LDMClient LQE SPARQL integration', () => {
+describeIf('LDMClient LQE incoming-links REST API integration', () => {
   test('gets and inverts incoming links for work item 892', async () => {
     const baseUrl = process.env.LQE_BASE_URL || 'https://trs-filter.smartfacts.com/lqe';
     const workItemUrl = process.env.LQE_WORK_ITEM_URL || 'https://trs-filter.smartfacts.com/ccm/resource/itemName/com.ibm.team.workitem.WorkItem/892';
