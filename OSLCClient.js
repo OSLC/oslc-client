@@ -130,6 +130,9 @@ function oslcClientLogHttpError(label, errorOrResponse) {
 /** Maximum number of auth dispatch cycles before giving up */
 const MAX_AUTH_DISPATCH_CYCLES = 3;
 
+/** Maximum number of redirects to follow during programmatic SSO */
+const MAX_SSO_REDIRECTS = 10;
+
 /** Known IdP URL patterns for SSO redirect detection */
 const IDP_PATTERNS = [
     '/adfs/ls', '/adfs/oauth2',
@@ -369,7 +372,7 @@ export default class OSLCClient {
      * @returns {Promise<Object>} Response from retrying the original request
      */
     async _handleSsoAuth(originalRequest, idpUrl, cycle) {
-        // In Node.js, try programmatic SSO first (stub — returns null until Task 3)
+        // In Node.js, try programmatic SSO first (follow IdP redirects, submit credentials)
         if (isNodeEnvironment) {
             const result = await this._attemptProgrammaticSso(originalRequest, idpUrl);
             if (result) {
@@ -394,13 +397,158 @@ export default class OSLCClient {
     }
 
     /**
-     * Attempt programmatic SSO authentication (stub — implemented in Task 3).
+     * Attempt programmatic SSO authentication by following the IdP redirect
+     * chain, parsing the login form, and submitting credentials.
+     *
      * @param {Object} originalRequest - The original axios request config
      * @param {string} idpUrl - The Identity Provider URL
      * @returns {Promise<Object|null>} Response if successful, null if not supported
      */
     async _attemptProgrammaticSso(originalRequest, idpUrl) {
-        return null;
+        try {
+            // Step 1: Follow redirect chain to reach the login page
+            let currentUrl = idpUrl;
+            let html = null;
+
+            for (let i = 0; i <= MAX_SSO_REDIRECTS; i++) {
+                let response;
+                try {
+                    response = await this.client.get(currentUrl, {
+                        maxRedirects: 0,
+                        validateStatus: () => true,
+                    });
+                } catch (error) {
+                    // axios may throw on 3xx if base validateStatus rejects it
+                    response = error.response;
+                    if (!response) return null;
+                }
+
+                if (response.status >= 300 && response.status < 400 && response.headers?.location) {
+                    // Follow redirect
+                    currentUrl = new URL(response.headers.location, currentUrl).toString();
+                    continue;
+                }
+
+                if (response.status >= 200 && response.status < 300) {
+                    html = typeof response.data === 'string' ? response.data : '';
+                    break;
+                }
+
+                // Unexpected status — bail out
+                return null;
+            }
+
+            if (!html) return null;
+
+            // Step 2: Parse the login form
+            const formData = this._parseLoginForm(html, currentUrl);
+            if (!formData) return null;
+
+            // Step 3: POST credentials to the form action
+            const params = new URLSearchParams();
+            for (const [name, value] of Object.entries(formData.fields)) {
+                params.append(name, value);
+            }
+            params.append(formData.usernameField, this.userid);
+            params.append(formData.passwordField, this.password);
+
+            const postResponse = await this.client.post(formData.action, params.toString(), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                maxRedirects: 5,
+                validateStatus: () => true,
+            });
+
+            // Step 4: Detect whether credentials were rejected
+            const postBody = typeof postResponse.data === 'string' ? postResponse.data : '';
+            if (this._isLoginPage(postBody)) {
+                // Got another login page — credentials rejected
+                return null;
+            }
+
+            // Step 5: Success — retry the original request
+            return await this.client.request(originalRequest);
+        } catch (error) {
+            console.warn('[_attemptProgrammaticSso] SSO attempt failed:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Parse an HTML login page to extract form action and input fields.
+     *
+     * @param {string} html - The HTML content of the login page
+     * @param {string} pageUrl - The URL of the page (for resolving relative action URLs)
+     * @returns {{ action: string, fields: Object, usernameField: string, passwordField: string } | null}
+     */
+    _parseLoginForm(html, pageUrl) {
+        let doc;
+        try {
+            doc = new DOMParser().parseFromString(html, 'text/html');
+        } catch {
+            return null;
+        }
+        if (!doc) return null;
+
+        // Find a form containing a password input
+        const forms = doc.getElementsByTagName('form');
+        let targetForm = null;
+        for (let i = 0; i < forms.length; i++) {
+            const inputs = forms[i].getElementsByTagName('input');
+            for (let j = 0; j < inputs.length; j++) {
+                const type = (inputs[j].getAttribute('type') || '').toLowerCase();
+                if (type === 'password') {
+                    targetForm = forms[i];
+                    break;
+                }
+            }
+            if (targetForm) break;
+        }
+        if (!targetForm) return null;
+
+        // Extract action URL
+        const rawAction = targetForm.getAttribute('action') || '';
+        let action;
+        try {
+            action = new URL(rawAction, pageUrl).toString();
+        } catch {
+            return null;
+        }
+
+        // Extract hidden fields, username field, and password field
+        const fields = {};
+        let usernameField = null;
+        let passwordField = null;
+
+        const inputs = targetForm.getElementsByTagName('input');
+        for (let i = 0; i < inputs.length; i++) {
+            const input = inputs[i];
+            const type = (input.getAttribute('type') || 'text').toLowerCase();
+            const name = input.getAttribute('name');
+            if (!name) continue;
+
+            if (type === 'hidden') {
+                fields[name] = input.getAttribute('value') || '';
+            } else if (type === 'password') {
+                passwordField = name;
+            } else if (type === 'text' || type === 'email') {
+                if (!usernameField) usernameField = name;
+            }
+        }
+
+        if (!passwordField) return null;
+
+        return { action, fields, usernameField: usernameField || 'username', passwordField };
+    }
+
+    /**
+     * Check if HTML content appears to be a login page (contains a password input).
+     *
+     * @param {string} html - The HTML content to check
+     * @returns {boolean}
+     */
+    _isLoginPage(html) {
+        if (!html || typeof html !== 'string') return false;
+        return /input[^>]+type=["']password["']/i.test(html);
     }
 
     /**
