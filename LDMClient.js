@@ -80,10 +80,11 @@ export default class LDMClient extends OSLCClient {
    * @param {string} password - Password for authentication
    * @param {string|null} configurationContext - GCM configuration context URL (optional)
    * @param {string} ldmServerBaseUrl - Base URL of the LDM server (e.g., https://server/ldm)
+   * @param {object} options - Optional configuration object passed to OSLCClient
    */
-  constructor(user, password, configurationContext, ldmServerBaseUrl) {
+  constructor(user, password, configurationContext, ldmServerBaseUrl, options = {}) {
     // Call OSLCClient constructor to set up authentication and axios client
-    super(user, password, configurationContext);
+    super(user, password, configurationContext, options);
 
     this.LDMServerBaseURL = normalizeBaseUrl(ldmServerBaseUrl);
     this._warnedMissingInverseLinkTypes = new Set();
