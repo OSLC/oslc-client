@@ -127,7 +127,30 @@ function oslcClientLogHttpError(label, errorOrResponse) {
     console.error(`[OSLCClient][HTTP ERROR] ${label}${summary ? `: ${summary}` : ''}`);
 }
 
+/** Maximum number of auth dispatch cycles before giving up */
+const MAX_AUTH_DISPATCH_CYCLES = 3;
 
+/** Known IdP URL patterns for SSO redirect detection */
+const IDP_PATTERNS = [
+    '/adfs/ls', '/adfs/oauth2',
+    '/oauth2/authorize', '/oauth2/authorization',
+    '/oauth/authorize',
+    '/auth/realms/',
+    '/saml2/idp/', '/saml/sso',
+    '/idp/SSO.saml2',
+    '/connect/authorize',
+];
+
+/**
+ * Check if a URL matches known Identity Provider patterns.
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function isIdpUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    const lower = url.toLowerCase();
+    return IDP_PATTERNS.some(pattern => lower.includes(pattern));
+}
 
 /**
  * An OSLCClient provides a simple interface to access OSLC resources
@@ -189,93 +212,218 @@ export default class OSLCClient {
         // Response interceptor for handling auth challenges
         this.client.interceptors.response.use(
             async response => {
-                const originalRequest = response.config;
-                const wwwAuthenticate = response?.headers?.['www-authenticate'];
-
-                // Check if this is a JEE Forms authentication challenge
-                if (response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
-                    try {
-                        // Perform the login (JEE form auth typically uses j_username and j_password)
-                        let url = new URL(response.config.url);
-                        const paths = url.pathname.split('/');
-                        url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
-
-                        // In browser, form-based auth may require a backend proxy due to CORS
-                        if (!isNodeEnvironment) {
-                            console.warn('Form-based authentication in browser requires CORS-enabled backend or proxy');
-                        }
-
-                        response = await this.client.post(url.toString(),
-                            new URLSearchParams({
-                                'j_username': this.userid,
-                                'j_password': this.password
-                            }).toString(),
-                            {
-                                headers: {
-                                    'Content-Type': 'application/x-www-form-urlencoded'
-                                },
-                                maxRedirects: 0,
-                                validateStatus: (status) => status === 302 // for successful login
-                            }
-                        );
-                        // After successful login, retry the original request with updated cookies
-                        response = await this.client.request(originalRequest);
-                        return response;
-                    } catch (jeeError) {
-                        // JEE Form auth failed — server may use JAS or Basic auth instead.
-                        // Fall through to try other auth methods before giving up.
-                        oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
-                    }
-                }
-
-                if (wwwAuthenticate?.includes('jauth realm')) {
-                    const token_uri = wwwAuthenticate.match(/token_uri="([^"]+)"/)?.[1];
-                    if (token_uri) {
-                        try {
-                            // Refresh the token using the provided token_uri
-                            const tokenResponse = await this.client.post(token_uri,
-                                new URLSearchParams({
-                                    username: this.userid,
-                                    password: this.password,
-                                }).toString(),
-                                {
-                                    headers: {
-                                        'Content-Type': 'application/x-www-form-urlencoded',
-                                        'Accept': 'text/plain',
-                                    }
-                                }
-                            );
-                            // retry the original request with the new token
-                            const newToken = tokenResponse.data; // Refresh token
-                            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-                            return await this.client.request(originalRequest); // Retry the request
-                        } catch (error) {
-                            oslcClientLogHttpError('Error during jauth realm authentication', error);
-                            return Promise.reject(error);
-                        }
-                    }
-                }
-
-                // Fallback: retry with Basic auth (works for JAS and other Basic-auth servers)
-                if (response.status === 401 || response?.headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') {
-                    originalRequest.auth = {
-                        username: this.userid,
-                        password: this.password
-                    };
-                    return await this.client.request(originalRequest);
-                }
-
-                // No authentication challenge, proceed with the response
-                return response;
+                return this._handleAuthDispatch(response, 0);
             },
         );
     };
 
     /**
+     * Main auth dispatch — inspects response headers/status and routes to the
+     * appropriate authentication handler. Re-dispatches after successful auth
+     * to handle chained challenges.
+     *
+     * @param {Object} response - Axios response object
+     * @param {number} cycle - Current dispatch cycle (prevents infinite loops)
+     * @returns {Promise<Object>} Resolved response or rejection
+     */
+    async _handleAuthDispatch(response, cycle, attempted = []) {
+        if (cycle >= MAX_AUTH_DISPATCH_CYCLES) {
+            return this._createAuthExhaustedRejection(response, attempted);
+        }
+
+        const originalRequest = response.config;
+        const headers = response?.headers || {};
+        const wwwAuthenticate = headers['www-authenticate'];
+        const authMsg = headers['x-com-ibm-team-repository-web-auth-msg'];
+        const status = response?.status;
+        const location = headers['location'];
+
+        // 1. JEE Forms auth challenge
+        if (authMsg === 'authrequired') {
+            attempted.push('jee-forms');
+            try {
+                const retryResponse = await this._handleJeeFormsAuth(originalRequest);
+                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+            } catch (jeeError) {
+                oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
+                // Fall through to try other auth methods
+            }
+        }
+
+        // 2. JAS Bearer auth challenge
+        if (wwwAuthenticate?.includes('jauth realm')) {
+            const tokenUri = wwwAuthenticate.match(/token_uri="([^"]+)"/)?.[1];
+            if (tokenUri) {
+                attempted.push('jas-bearer');
+                try {
+                    const retryResponse = await this._handleJasBearerAuth(originalRequest, tokenUri);
+                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+                } catch (error) {
+                    // JAS bearer failure is terminal — if the server explicitly offers a token
+                    // endpoint and it fails, there's no useful fallback (the token was server-specific).
+                    oslcClientLogHttpError('Error during jauth realm authentication', error);
+                    return Promise.reject(error);
+                }
+            }
+        }
+
+        // 3. SSO redirect detection (3xx with IdP location)
+        // NOTE: axios follows redirects by default, so 3xx responses typically don't reach
+        // the interceptor. Task 3 (programmatic SSO) must set maxRedirects: 0 on SSO-sensitive
+        // requests for this detection to fire in production.
+        if (status >= 300 && status < 400 && location && isIdpUrl(location)) {
+            attempted.push('sso');
+            try {
+                const retryResponse = await this._handleSsoAuth(originalRequest, location, cycle);
+                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+            } catch (ssoError) {
+                // SSO failed — fall through to exhausted
+                return this._createAuthExhaustedRejection(response, attempted);
+            }
+        }
+
+        // 4. Basic auth fallback (plain 401 or authrequired that failed JEE)
+        if (status === 401 || authMsg === 'authrequired') {
+            attempted.push('basic');
+            try {
+                originalRequest.auth = {
+                    username: this.userid,
+                    password: this.password,
+                };
+                const retryResponse = await this.client.request(originalRequest);
+                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+            } catch (error) {
+                oslcClientLogHttpError('Basic auth failed', error);
+                // Fall through — let exhausted rejection handle it
+            }
+        }
+
+        // No authentication challenge — return response as-is
+        return response;
+    }
+
+    /**
+     * Handle JEE Forms authentication (j_security_check).
+     * @param {Object} originalRequest - The original axios request config
+     * @returns {Promise<Object>} Response from retrying the original request
+     */
+    async _handleJeeFormsAuth(originalRequest) {
+        let url = new URL(originalRequest.url);
+        const paths = url.pathname.split('/');
+        url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
+
+        if (!isNodeEnvironment) {
+            console.warn('Form-based authentication in browser requires CORS-enabled backend or proxy');
+        }
+
+        await this.client.post(url.toString(),
+            new URLSearchParams({
+                'j_username': this.userid,
+                'j_password': this.password,
+            }).toString(),
+            {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                maxRedirects: 0,
+                validateStatus: (status) => status === 302,
+            }
+        );
+
+        // After successful login, retry the original request with updated cookies
+        return await this.client.request(originalRequest);
+    }
+
+    /**
+     * Handle JAS Bearer authentication.
+     * @param {Object} originalRequest - The original axios request config
+     * @param {string} tokenUri - The token endpoint URI from the www-authenticate header
+     * @returns {Promise<Object>} Response from retrying the original request
+     */
+    async _handleJasBearerAuth(originalRequest, tokenUri) {
+        const tokenResponse = await this.client.post(tokenUri,
+            new URLSearchParams({
+                username: this.userid,
+                password: this.password,
+            }).toString(),
+            {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'text/plain',
+                },
+            }
+        );
+        const newToken = tokenResponse.data;
+        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+        return await this.client.request(originalRequest);
+    }
+
+    /**
+     * Handle SSO authentication via redirect to an Identity Provider.
+     * In Node.js, first attempts programmatic SSO. If that fails and an
+     * ssoCallback is available, delegates to the callback.
+     *
+     * @param {Object} originalRequest - The original axios request config
+     * @param {string} idpUrl - The Identity Provider URL from the redirect
+     * @param {number} cycle - Current dispatch cycle
+     * @returns {Promise<Object>} Response from retrying the original request
+     */
+    async _handleSsoAuth(originalRequest, idpUrl, cycle) {
+        // In Node.js, try programmatic SSO first (stub — returns null until Task 3)
+        if (isNodeEnvironment) {
+            const result = await this._attemptProgrammaticSso(originalRequest, idpUrl);
+            if (result) {
+                return result;
+            }
+        }
+
+        // If programmatic SSO failed or unavailable, try the ssoCallback
+        if (this.ssoCallback) {
+            const callbackResult = await this.ssoCallback(idpUrl);
+            if (callbackResult) {
+                // If callback returned a CookieJar, swap it in
+                if (CookieJar && callbackResult instanceof CookieJar) {
+                    this.jar = callbackResult;
+                }
+                // Retry the original request
+                return await this.client.request(originalRequest);
+            }
+        }
+
+        throw new Error(`SSO authentication required but not handled: ${idpUrl}`);
+    }
+
+    /**
+     * Attempt programmatic SSO authentication (stub — implemented in Task 3).
+     * @param {Object} originalRequest - The original axios request config
+     * @param {string} idpUrl - The Identity Provider URL
+     * @returns {Promise<Object|null>} Response if successful, null if not supported
+     */
+    async _attemptProgrammaticSso(originalRequest, idpUrl) {
+        return null;
+    }
+
+    /**
+     * Create a structured AUTH_EXHAUSTED rejection.
+     * @param {Object} response - The last response received
+     * @param {string[]} attempted - Array of auth method names that were tried
+     * @returns {Promise<never>} Rejected promise with structured error
+     */
+    _createAuthExhaustedRejection(response, attempted) {
+        const error = new Error('Authentication exhausted — all methods failed');
+        error.code = 'AUTH_EXHAUSTED';
+        error.status = response?.status || 401;
+        error.attempted = attempted;
+        error.ssoDetected = attempted.includes('sso');
+        error.url = response?.config?.url;
+        return Promise.reject(error);
+    }
+
+    /**
      * Set the OSLCClient to use a given service provider of the given domain,
-     * 
-     * @param {*} serviceProviderName 
-     * @param {*} domain 
+     *
+     * @param {*} serviceProviderName
+     * @param {*} domain
      */
     async use(server_url, serviceProviderName, domain = 'CM') {
         this.base_url = server_url?.endsWith('/') ? server_url.slice(0, -1) : server_url;
