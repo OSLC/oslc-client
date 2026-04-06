@@ -136,18 +136,27 @@ function oslcClientLogHttpError(label, errorOrResponse) {
  */
 
 export default class OSLCClient {
-    constructor(user, password, configuration_context = null) {
+    /**
+     * @param {string} user - Username for authentication
+     * @param {string} password - Password for authentication
+     * @param {string|null} [configuration_context=null] - OSLC Configuration-Context URI
+     * @param {Object} [options={}]
+     * @param {import('tough-cookie').CookieJar} [options.cookieJar] - Shared CookieJar (Node.js only). If provided, used instead of creating a private jar.
+     * @param {Function} [options.ssoCallback] - Async callback for interactive SSO authentication: (idpUrl: string) => CookieJar | boolean | null
+     */
+    constructor(user, password, configuration_context = null, options = {}) {
         this.userid = user;
         this.password = password;
         this.configuration_context = configuration_context;
+        this.ssoCallback = options.ssoCallback ?? null;
         this.rootservices = null;
         this.spc = null;
         this.sp = null;
         this.ownerMap = new Map();
         this.isNodeEnvironment = isNodeEnvironment;
-        
+
         if (isNodeEnvironment) {
-            this.jar = new CookieJar();
+            this.jar = options.cookieJar ?? new CookieJar();
         }
 
         // Create a base configuration
