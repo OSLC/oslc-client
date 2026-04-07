@@ -223,11 +223,9 @@ export default class OSLCClient {
                 if (response?.config?._oslcAuthHandled) {
                     return response;
                 }
-                console.log(`[OSLCClient] interceptor: status=${response?.status} url=${response?.config?.url?.substring(0, 80)}`);
                 return this._handleAuthDispatch(response, 0);
             },
             async error => {
-                console.log(`[OSLCClient] interceptor error: ${error?.message} status=${error?.response?.status} url=${error?.config?.url?.substring(0, 80)}`);
                 return Promise.reject(error);
             }
         );
@@ -253,9 +251,6 @@ export default class OSLCClient {
         const authMsg = headers['x-com-ibm-team-repository-web-auth-msg'];
         const status = response?.status;
         const location = headers['location'];
-
-        // DEBUG: trace auth dispatch decisions
-        console.log(`[OSLCClient] _handleAuthDispatch cycle=${cycle} status=${status} url=${originalRequest?.url?.substring(0, 80)} authMsg=${authMsg || 'none'} location=${location?.substring(0, 80) || 'none'}`);
 
         // 1. JEE Forms auth challenge
         if (authMsg === 'authrequired' && !attempted.includes('jee-forms')) {
@@ -337,7 +332,6 @@ export default class OSLCClient {
             attempted.push('sso-interactive');
             try {
                 const resourceUrl = originalRequest.url;
-                console.log(`[OSLCClient] Trying interactive SSO callback for ${resourceUrl?.substring(0, 80)}`);
                 const callbackResult = await this.ssoCallback(resourceUrl);
                 if (callbackResult) {
                     if (isNodeEnvironment && CookieJar && callbackResult instanceof CookieJar) {
