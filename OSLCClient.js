@@ -215,11 +215,21 @@ export default class OSLCClient {
             this.client.defaults.headers.common['Configuration-Context'] = configuration_context;
         }
 
-        // Response interceptor for handling auth challenges
+        // Response interceptor for handling auth challenges.
+        // Requests marked with _oslcAuthHandled have already been through auth
+        // dispatch (they are retries from the auth handlers) — pass them through.
         this.client.interceptors.response.use(
             async response => {
+                if (response?.config?._oslcAuthHandled) {
+                    return response;
+                }
+                console.log(`[OSLCClient] interceptor: status=${response?.status} url=${response?.config?.url?.substring(0, 80)}`);
                 return this._handleAuthDispatch(response, 0);
             },
+            async error => {
+                console.log(`[OSLCClient] interceptor error: ${error?.message} status=${error?.response?.status} url=${error?.config?.url?.substring(0, 80)}`);
+                return Promise.reject(error);
+            }
         );
     };
 
@@ -244,8 +254,11 @@ export default class OSLCClient {
         const status = response?.status;
         const location = headers['location'];
 
+        // DEBUG: trace auth dispatch decisions
+        console.log(`[OSLCClient] _handleAuthDispatch cycle=${cycle} status=${status} url=${originalRequest?.url?.substring(0, 80)} authMsg=${authMsg || 'none'} location=${location?.substring(0, 80) || 'none'}`);
+
         // 1. JEE Forms auth challenge
-        if (authMsg === 'authrequired') {
+        if (authMsg === 'authrequired' && !attempted.includes('jee-forms')) {
             attempted.push('jee-forms');
             try {
                 const retryResponse = await this._handleJeeFormsAuth(originalRequest);
@@ -257,7 +270,7 @@ export default class OSLCClient {
         }
 
         // 2. JAS Bearer auth challenge
-        if (wwwAuthenticate?.includes('jauth realm')) {
+        if (wwwAuthenticate?.includes('jauth realm') && !attempted.includes('jas-bearer')) {
             const tokenUri = wwwAuthenticate.match(/token_uri="([^"]+)"/)?.[1];
             if (tokenUri) {
                 attempted.push('jas-bearer');
@@ -289,25 +302,26 @@ export default class OSLCClient {
                 }
             } else {
                 // Non-IdP redirect — follow it manually (normal redirect behavior)
-                const redirectConfig = { ...originalRequest, url: absoluteLocation };
+                const redirectConfig = { ...originalRequest, url: absoluteLocation, _oslcAuthHandled: false };
                 // Avoid re-sending POST body on redirect (302/303 → GET)
                 if (status === 302 || status === 303) {
                     redirectConfig.method = 'get';
                     delete redirectConfig.data;
                 }
                 const redirectResponse = await this.client.request(redirectConfig);
-                return redirectResponse; // Already goes through interceptor on the way back
+                return redirectResponse; // Goes through interceptor — _oslcAuthHandled is false so auth dispatch runs
             }
         }
 
         // 4. Basic auth fallback (plain 401 or authrequired that failed JEE)
-        if (status === 401 || authMsg === 'authrequired') {
+        if ((status === 401 || authMsg === 'authrequired') && !attempted.includes('basic')) {
             attempted.push('basic');
             try {
                 originalRequest.auth = {
                     username: this.userid,
                     password: this.password,
                 };
+                originalRequest._oslcAuthHandled = true;
                 const retryResponse = await this.client.request(originalRequest);
                 return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
             } catch (error) {
@@ -349,6 +363,7 @@ export default class OSLCClient {
         );
 
         // After successful login, retry the original request with updated cookies
+        originalRequest._oslcAuthHandled = true;
         return await this.client.request(originalRequest);
     }
 
@@ -373,6 +388,7 @@ export default class OSLCClient {
         );
         const newToken = tokenResponse.data;
         originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+        originalRequest._oslcAuthHandled = true;
         return await this.client.request(originalRequest);
     }
 
@@ -404,6 +420,7 @@ export default class OSLCClient {
                     this.jar = callbackResult;
                 }
                 // Retry the original request
+                originalRequest._oslcAuthHandled = true;
                 return await this.client.request(originalRequest);
             }
         }
