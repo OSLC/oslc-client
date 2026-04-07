@@ -299,9 +299,6 @@ export default class LDMClient extends OSLCClient {
       const response = await this.client.post(endpoint, params.toString(), {
         auth: requestAuth,
         headers,
-        // Override base validateStatus — don't accept 401 for LQE requests
-        // (LQE uses different auth from the app server)
-        validateStatus: status => status < 400
       });
       const data = response.data;
 
