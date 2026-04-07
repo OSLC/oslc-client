@@ -310,12 +310,26 @@ export default class LDMClient extends OSLCClient {
         throw new Error(`LQE incoming-links error: ${data.error}`);
       }
 
-      const results = data?.queryResults || [];
-      return results.map(r => ({
-        sourceURL: r.sourceUrl || '',
-        linkType: r.linkType || '',
-        targetURL: r.targetUrl || ''
-      }));
+      // REST API format (LQE 7.1.0+ with relational store)
+      if (data?.queryResults) {
+        return data.queryResults.map(r => ({
+          sourceURL: r.sourceUrl || '',
+          linkType: r.linkType || '',
+          targetURL: r.targetUrl || ''
+        }));
+      }
+
+      // SPARQL JSON format (LQE with Jena store)
+      // Variables: sURL (source), linkType, tURL (target), indLinkType
+      if (data?.results?.bindings) {
+        return data.results.bindings.map(b => ({
+          sourceURL: b.sURL?.value || '',
+          linkType: b.linkType?.value || '',
+          targetURL: b.tURL?.value || ''
+        }));
+      }
+
+      return [];
     } catch (error) {
       const status = error?.response?.status;
       const msg = error?.response?.data?.error || error?.message || 'Unknown error';
