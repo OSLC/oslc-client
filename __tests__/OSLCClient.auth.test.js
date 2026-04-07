@@ -256,9 +256,7 @@ describe('auth dispatch', () => {
             data: 'Unauthorized',
         };
 
-        // Basic auth retry also returns 401 — since 'basic' is already in
-        // attempted, dispatch won't retry it and falls through to no-challenge
-        // (returning the 401 response as-is from the re-dispatch)
+        // Basic auth retry also returns 401
         client.client.request = jest.fn(async () => ({
             status: 401,
             headers: {},
@@ -266,11 +264,15 @@ describe('auth dispatch', () => {
             data: 'Unauthorized',
         }));
 
-        // Basic auth is tried once, fails, re-dispatch sees 401 with basic
-        // already attempted → returns the 401 response (no more methods to try)
-        const result = await client._handleAuthDispatch(unauthorizedResponse, 0);
-        expect(result.status).toBe(401);
-        expect(client.client.request).toHaveBeenCalledTimes(1);
+        // Basic auth tried once, fails → still 401 with methods attempted → AUTH_EXHAUSTED
+        try {
+            await client._handleAuthDispatch(unauthorizedResponse, 0);
+            throw new Error('Should have rejected');
+        } catch (error) {
+            expect(error.code).toBe('AUTH_EXHAUSTED');
+            expect(error.attempted).toContain('basic');
+            expect(client.client.request).toHaveBeenCalledTimes(1);
+        }
     });
 
     test('SSO detection — dispatches on 3xx redirect to IdP URL', async () => {

@@ -330,7 +330,36 @@ export default class OSLCClient {
             }
         }
 
-        // No authentication challenge — return response as-is
+        // 5. Interactive SSO callback as last resort — when all automated methods
+        // failed (or none matched) and we still have an auth failure, let the user
+        // authenticate interactively via browser window.
+        if (status === 401 && this.ssoCallback && !attempted.includes('sso-interactive')) {
+            attempted.push('sso-interactive');
+            try {
+                const resourceUrl = originalRequest.url;
+                console.log(`[OSLCClient] Trying interactive SSO callback for ${resourceUrl?.substring(0, 80)}`);
+                const callbackResult = await this.ssoCallback(resourceUrl);
+                if (callbackResult) {
+                    if (isNodeEnvironment && CookieJar && callbackResult instanceof CookieJar) {
+                        this.jar = callbackResult;
+                    }
+                    originalRequest._oslcAuthHandled = true;
+                    delete originalRequest.auth; // Remove failed Basic auth
+                    const retryResponse = await this.client.request(originalRequest);
+                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+                }
+            } catch (ssoError) {
+                oslcClientLogHttpError('Interactive SSO callback failed', ssoError);
+            }
+        }
+
+        // No authentication challenge or all methods already attempted
+        if (status === 401 && attempted.length > 0) {
+            // Still 401 after trying auth methods — all failed
+            return this._createAuthExhaustedRejection(response, attempted);
+        }
+
+        // Non-401 response (success, or no auth challenge) — return as-is
         return response;
     }
 
