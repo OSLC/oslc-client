@@ -195,6 +195,41 @@ describe('auth dispatch', () => {
         expect(result).toBe(normalResponse);
     });
 
+    test('non-IdP redirect — follows redirect manually', async () => {
+        const redirectResponse = {
+            status: 302,
+            headers: { location: 'https://server.example.com/rm/resources/1-resolved' },
+            config: { url: 'https://server.example.com/rm/resources/1', headers: {}, method: 'get' },
+        };
+        const finalResponse = {
+            status: 200,
+            headers: {},
+            config: { url: 'https://server.example.com/rm/resources/1-resolved', headers: {} },
+            data: '<rdf>resource data</rdf>',
+        };
+
+        client.client.request = jest.fn(async () => finalResponse);
+
+        const result = await client._handleAuthDispatch(redirectResponse, 0);
+
+        expect(client.client.request).toHaveBeenCalledWith(
+            expect.objectContaining({ url: 'https://server.example.com/rm/resources/1-resolved' })
+        );
+        expect(result).toBe(finalResponse);
+    });
+
+    test('IdP redirect — triggers SSO auth', async () => {
+        const ssoRedirectResponse = {
+            status: 302,
+            headers: { location: 'https://idp.example.com/adfs/ls?SAMLRequest=abc' },
+            config: { url: 'https://server.example.com/rm/resources/1', headers: {} },
+        };
+
+        // SSO will fail (no callback, programmatic returns null) → AUTH_EXHAUSTED
+        await expect(client._handleAuthDispatch(ssoRedirectResponse, 0))
+            .rejects.toMatchObject({ code: 'AUTH_EXHAUSTED', ssoDetected: true });
+    });
+
     test('AUTH_EXHAUSTED — rejects when cycle limit reached', async () => {
         const response = {
             status: 401,

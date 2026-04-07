@@ -186,13 +186,16 @@ export default class OSLCClient {
         }
 
         // Create a base configuration
+        // maxRedirects: 0 so the response interceptor can inspect 3xx redirects
+        // for SSO (IdP) detection. Non-IdP redirects are followed manually in the interceptor.
         const baseConfig = {
             timeout: 30000,
+            maxRedirects: 0,
             headers: {
                 'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5',
                 'OSLC-Core-Version': '2.0'
             },
-            validateStatus: status => status === 401 || status < 400 // Accept all 2xx responses
+            validateStatus: status => status === 401 || status < 400 // Accept 2xx, 3xx, and 401
         };
 
         // Configure for Node.js or Browser
@@ -270,18 +273,30 @@ export default class OSLCClient {
             }
         }
 
-        // 3. SSO redirect detection (3xx with IdP location)
-        // NOTE: axios follows redirects by default, so 3xx responses typically don't reach
-        // the interceptor. Task 3 (programmatic SSO) must set maxRedirects: 0 on SSO-sensitive
-        // requests for this detection to fire in production.
-        if (status >= 300 && status < 400 && location && isIdpUrl(location)) {
-            attempted.push('sso');
-            try {
-                const retryResponse = await this._handleSsoAuth(originalRequest, location, cycle);
-                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-            } catch (ssoError) {
-                // SSO failed — fall through to exhausted
-                return this._createAuthExhaustedRejection(response, attempted);
+        // 3. Redirect handling (maxRedirects: 0 means all redirects reach the interceptor)
+        if (status >= 300 && status < 400 && location) {
+            const absoluteLocation = new URL(location, originalRequest.url).toString();
+
+            if (isIdpUrl(absoluteLocation)) {
+                // SSO redirect — route to SSO auth handler
+                attempted.push('sso');
+                try {
+                    const retryResponse = await this._handleSsoAuth(originalRequest, absoluteLocation, cycle);
+                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+                } catch (ssoError) {
+                    // SSO failed — fall through to exhausted
+                    return this._createAuthExhaustedRejection(response, attempted);
+                }
+            } else {
+                // Non-IdP redirect — follow it manually (normal redirect behavior)
+                const redirectConfig = { ...originalRequest, url: absoluteLocation };
+                // Avoid re-sending POST body on redirect (302/303 → GET)
+                if (status === 302 || status === 303) {
+                    redirectConfig.method = 'get';
+                    delete redirectConfig.data;
+                }
+                const redirectResponse = await this.client.request(redirectConfig);
+                return redirectResponse; // Already goes through interceptor on the way back
             }
         }
 
