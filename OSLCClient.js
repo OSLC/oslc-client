@@ -8,21 +8,25 @@ import RootServices from './RootServices.js';
 import ServiceProviderCatalog from './ServiceProviderCatalog.js';
 import ServiceProvider from './ServiceProvider.js';
 
-// Conditional imports for Node.js only
+// Conditional imports for Node.js only — loaded lazily to avoid top-level await
+// which prevents browser bundlers (esbuild/webpack) from processing this module.
 let wrapper, CookieJar, DOMParser;
 const isNodeEnvironment = typeof window === 'undefined';
+let _nodeModulesLoaded = false;
 
-if (isNodeEnvironment) {
-    // Node.js imports
-    const cookiejarSupport = await import('axios-cookiejar-support');
-    wrapper = cookiejarSupport.wrapper;
-    const toughCookie = await import('tough-cookie');
-    CookieJar = toughCookie.CookieJar;
-    const xmldom = await import('@xmldom/xmldom');
-    DOMParser = xmldom.DOMParser;
-} else {
-    // Browser: use native DOMParser
-    DOMParser = window.DOMParser;
+async function ensureNodeModules() {
+    if (_nodeModulesLoaded) return;
+    _nodeModulesLoaded = true;
+    if (isNodeEnvironment) {
+        const cookiejarSupport = await import('axios-cookiejar-support');
+        wrapper = cookiejarSupport.wrapper;
+        const toughCookie = await import('tough-cookie');
+        CookieJar = toughCookie.CookieJar;
+        const xmldom = await import('@xmldom/xmldom');
+        DOMParser = xmldom.DOMParser;
+    } else {
+        DOMParser = window.DOMParser;
+    }
 }
 
 // Service providers properties
@@ -175,19 +179,17 @@ export default class OSLCClient {
         this.password = password;
         this.configuration_context = configuration_context;
         this.ssoCallback = options.ssoCallback ?? null;
+        this._ldmBaseUrl = options.ldmBaseUrl || null;
         this.rootservices = null;
         this.spc = null;
         this.sp = null;
         this.ownerMap = new Map();
         this.isNodeEnvironment = isNodeEnvironment;
+        this._options = options;
+        this._initialized = false;
 
-        if (isNodeEnvironment) {
-            this.jar = options.cookieJar ?? new CookieJar();
-        }
-
-        // Create a base configuration
-        // maxRedirects: 0 so the response interceptor can inspect 3xx redirects
-        // for SSO (IdP) detection. Non-IdP redirects are followed manually in the interceptor.
+        // Create a base axios client — Node.js cookie jar support is applied
+        // lazily in _ensureInitialized() to avoid top-level await.
         const baseConfig = {
             timeout: 30000,
             maxRedirects: 0,
@@ -195,20 +197,15 @@ export default class OSLCClient {
                 'Accept': 'application/rdf+xml, text/turtle;q=0.9, application/ld+json;q=0.8, application/json;q=0.7, application/xml;q=0.6, text/xml;q=0.5',
                 'OSLC-Core-Version': '2.0'
             },
-            validateStatus: status => status === 401 || status < 400 // Accept 2xx, 3xx, and 401
+            validateStatus: status => status === 401 || status < 400
         };
 
-        // Configure for Node.js or Browser
         if (isNodeEnvironment) {
-            // Node.js: use a cookie jar and keep-alive
             baseConfig.keepAlive = true;
-            baseConfig.jar = this.jar;
-            this.client = wrapper(axios.create(baseConfig));
         } else {
-            // Browser: use withCredentials for automatic cookie handling
             baseConfig.withCredentials = true;
-            this.client = axios.create(baseConfig);
         }
+        this.client = axios.create(baseConfig);
 
         // Add the Configuration-Context header if one is given
         if (configuration_context) {
@@ -230,6 +227,21 @@ export default class OSLCClient {
             }
         );
     };
+
+    /**
+     * Lazily load Node.js modules and upgrade the axios client with cookie jar
+     * support. Called automatically before the first network request.
+     */
+    async _ensureInitialized() {
+        if (this._initialized) return;
+        this._initialized = true;
+        await ensureNodeModules();
+        if (isNodeEnvironment) {
+            this.jar = this._options.cookieJar ?? new CookieJar();
+            this.client.defaults.jar = this.jar;
+            this.client = wrapper(this.client);
+        }
+    }
 
     /**
      * Main auth dispatch — inspects response headers/status and routes to the
@@ -671,11 +683,12 @@ export default class OSLCClient {
      * @returns an OSLCResource object containing the resource data
      */
     async getResource(url, oslc_version = '2.0', accept = 'application/rdf+xml') {
+        await this._ensureInitialized();
         const headers = {
             'Accept': accept,
             'OSLC-Core-Version': oslc_version
         };
-        
+
         let response
         try {
             response = await this.client.get(url, { headers });
@@ -724,6 +737,7 @@ export default class OSLCClient {
      * @returns an OSLCResource object containing the resource data
      */
     async getCompactResource(url, oslc_version = '2.0', accept = 'application/x-oslc-compact+xml') {
+        await this._ensureInitialized();
         const headers = {
             'Accept': accept,
             'OSLC-Core-Version': oslc_version
@@ -782,6 +796,7 @@ export default class OSLCClient {
 
 
     async putResource(resource, eTag = null, oslc_version = '2.0') {
+        await this._ensureInitialized();
         const graph = resource.store;
         if (!graph) {
             throw new Error('Resource has no data to update');
@@ -808,6 +823,7 @@ export default class OSLCClient {
     }
 
     async createResource(resourceType, resource, oslc_version = '2.0') {
+        await this._ensureInitialized();
         const graph = resource.store;
         if (!graph) {
             throw new Error('Resource has no data to create');
@@ -840,6 +856,7 @@ export default class OSLCClient {
     }
 
     async deleteResource(resource, oslc_version = '2.0') {
+        await this._ensureInitialized();
         const graph = resource.store;
         if (!graph) {
             throw new Error('Resource has no data to delete');
@@ -902,6 +919,7 @@ export default class OSLCClient {
     }
 
     async queryWithBase(queryBase, query) {
+        await this._ensureInitialized();
         const headers = {
             'OSLC-Core-Version': '2.0',
             'Accept': 'application/rdf+xml',
@@ -943,6 +961,7 @@ export default class OSLCClient {
     }
 
     async getOwner(url) {
+        await this._ensureInitialized();
         if (this.ownerMap.has(url)) {
             return this.ownerMap.get(url);
         }
@@ -973,6 +992,25 @@ export default class OSLCClient {
             return name;
         }        
         return 'Unknown';
+    }
+
+    /**
+     * Get incoming links to the given target resource URLs, returning
+     * already-inverted triples (with inverseLinkType).
+     * Delegates to LDMClient (composition helper).
+     *
+     * @param {string[]} targetResourceURLs - URLs of resources to find incoming links for
+     * @param {string[]} linkTypes - optional filter of link type URIs
+     * @returns {Promise<Array<{targetURL: string, inverseLinkType: string, sourceURL: string}>>}
+     */
+    async getIncomingLinks(targetResourceURLs, linkTypes = []) {
+        if (!this._ldmBaseUrl) return [];
+        await this._ensureInitialized();
+
+        const { default: LDMClient } = await import('./LDMClient.js');
+        const ldm = new LDMClient(this, this._ldmBaseUrl);
+        const triples = await ldm.getIncomingLinks(targetResourceURLs, linkTypes);
+        return ldm.invert(triples);
     }
 
     async getQueryBase(resourceType) {

@@ -8,15 +8,22 @@ import { jest } from '@jest/globals';
 jest.unstable_mockModule('rdflib', () => {
   const mockStore = {
     statementsMatching: jest.fn(() => []),
+    any: jest.fn(() => null),
+    querySync: jest.fn(() => []),
   };
+  const Namespace = jest.fn((ns) => (localName) => `${ns}${localName || ''}`);
+  const sym = jest.fn((uri) => ({ value: uri, termType: 'NamedNode' }));
   return {
     graph: jest.fn(() => mockStore),
     parse: jest.fn(),
-    default: { graph: jest.fn(() => mockStore), parse: jest.fn() },
+    Namespace,
+    sym,
+    default: { graph: jest.fn(() => mockStore), parse: jest.fn(), Namespace, sym },
   };
 });
 
 const { default: LDMClient } = await import('../LDMClient.js');
+const { default: OSLCClient } = await import('../OSLCClient.js');
 
 /**
  * Build a fake OSLCClient-like object with the properties LDMClient needs.
@@ -161,5 +168,41 @@ describe('LDMClient composition pattern', () => {
 
       expect(result[0].inverseLinkType).toBe('http://open-services.net/ns/core#related');
     });
+  });
+});
+
+describe('OSLCClient.getIncomingLinks', () => {
+  test('returns empty array when no ldmBaseUrl configured', async () => {
+    const client = new OSLCClient('user', 'pass');
+    const result = await client.getIncomingLinks(['https://server/rm/r1'], []);
+    expect(result).toEqual([]);
+  });
+
+  test('delegates to LDMClient when ldmBaseUrl is configured', async () => {
+    const client = new OSLCClient('user', 'pass', null, {
+      ldmBaseUrl: 'https://server/lqe'
+    });
+    await client._ensureInitialized();
+
+    // Mock the axios post to return LQE results
+    client.client.post = jest.fn().mockResolvedValue({
+      data: {
+        queryResults: [{
+          sourceUrl: 'https://server/ccm/wi/1',
+          linkType: 'http://open-services.net/ns/cm#implementsRequirement',
+          targetUrl: 'https://server/rm/req/1'
+        }]
+      },
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const result = await client.getIncomingLinks(['https://server/rm/req/1'], []);
+
+    // Should return already-inverted results
+    expect(result).toEqual([{
+      targetURL: 'https://server/rm/req/1',
+      inverseLinkType: 'http://open-services.net/ns/rm#implementedBy',
+      sourceURL: 'https://server/ccm/wi/1'
+    }]);
   });
 });
