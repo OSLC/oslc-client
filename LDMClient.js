@@ -1,5 +1,4 @@
 import * as $rdf from 'rdflib';
-import OSLCClient from './OSLCClient.js';
 
 const DEFAULT_ACCEPT = 'text/turtle, application/rdf+xml;q=0.9, application/ld+json;q=0.8, application/json;q=0.7';
 
@@ -69,23 +68,19 @@ function parseRdfTriples({ data, contentType, baseIRI }) {
 }
 
 /**
- * LDMClient extends OSLCClient to provide Link Discovery Management (LDM) functionality.
- * It inherits authentication handling from OSLCClient and adds methods for discovering
+ * LDMClient is a composition helper that uses an OSLCClient instance for HTTP requests.
+ * It provides Link Discovery Management (LDM) functionality for discovering
  * incoming links to OSLC resources.
  */
-export default class LDMClient extends OSLCClient {
+export default class LDMClient {
   /**
    * Create an LDMClient instance.
-   * @param {string} user - Username for authentication
-   * @param {string} password - Password for authentication
-   * @param {string|null} configurationContext - GCM configuration context URL (optional)
+   * @param {OSLCClient} oslcClient - An initialized OSLCClient instance (provides client, userid, password, configuration_context)
    * @param {string} ldmServerBaseUrl - Base URL of the LDM server (e.g., https://server/ldm)
-   * @param {object} options - Optional configuration object passed to OSLCClient
    */
-  constructor(user, password, configurationContext, ldmServerBaseUrl, options = {}) {
-    // Call OSLCClient constructor to set up authentication and axios client
-    super(user, password, configurationContext, options);
-
+  constructor(oslcClient, ldmServerBaseUrl) {
+    this.oslcClient = oslcClient;
+    this.client = oslcClient.client;
     this.LDMServerBaseURL = normalizeBaseUrl(ldmServerBaseUrl);
     this._warnedMissingInverseLinkTypes = new Set();
   }
@@ -106,7 +101,7 @@ export default class LDMClient extends OSLCClient {
     }
 
     // Use provided configurationContext or fall back to the one set in constructor
-    const effectiveConfigContext = configurationContext || this.configuration_context;
+    const effectiveConfigContext = configurationContext || this.oslcClient.configuration_context;
 
     const isLqe = this.LDMServerBaseURL.includes('/lqe');
     if (isLqe) {
@@ -287,8 +282,8 @@ export default class LDMClient extends OSLCClient {
       return !!(common?.Authorization || common?.authorization);
     };
 
-    const requestAuth = !hasAuthorizationHeader() && this.userid && this.password
-      ? { username: this.userid, password: this.password }
+    const requestAuth = !hasAuthorizationHeader() && this.oslcClient.userid && this.oslcClient.password
+      ? { username: this.oslcClient.userid, password: this.oslcClient.password }
       : undefined;
 
     if (debugLqe) {
