@@ -223,6 +223,7 @@ export default class OSLCClient {
                 return this._handleAuthDispatch(response, 0);
             },
             async error => {
+                console.log(`[OSLCClient interceptor error] message=${error?.message}, code=${error?.code}, url=${error?.config?.url?.substring(0, 80)}`);
                 return Promise.reject(error);
             }
         );
@@ -263,6 +264,8 @@ export default class OSLCClient {
         const authMsg = headers['x-com-ibm-team-repository-web-auth-msg'];
         const status = response?.status;
         const location = headers['location'];
+
+        console.log(`[OSLCClient auth] status=${status}, authMsg=${authMsg}, isNode=${isNodeEnvironment}, hasSsoCallback=${!!this.ssoCallback}, attempted=[${attempted}], url=${originalRequest?.url?.substring(0, 80)}`);
 
         // 1. JEE Forms auth challenge
         // In the browser, skip FORM auth when ssoCallback is available — the browser
