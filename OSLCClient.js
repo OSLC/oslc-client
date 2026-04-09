@@ -327,19 +327,24 @@ export default class OSLCClient {
         }
 
         // 4. Basic auth fallback (plain 401 or authrequired that failed JEE)
+        // In the browser, skip Basic auth when ssoCallback is available — the browser
+        // follows redirects transparently, so Basic auth credentials can end up at an
+        // SSO IdP where they don't belong. Let ssoCallback handle auth interactively.
         if ((status === 401 || authMsg === 'authrequired') && !attempted.includes('basic')) {
-            attempted.push('basic');
-            try {
-                originalRequest.auth = {
-                    username: this.userid,
-                    password: this.password,
-                };
-                originalRequest._oslcAuthHandled = true;
-                const retryResponse = await this.client.request(originalRequest);
-                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-            } catch (error) {
-                oslcClientLogHttpError('Basic auth failed', error);
-                // Fall through — let exhausted rejection handle it
+            if (isNodeEnvironment || !this.ssoCallback) {
+                attempted.push('basic');
+                try {
+                    originalRequest.auth = {
+                        username: this.userid,
+                        password: this.password,
+                    };
+                    originalRequest._oslcAuthHandled = true;
+                    const retryResponse = await this.client.request(originalRequest);
+                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+                } catch (error) {
+                    oslcClientLogHttpError('Basic auth failed', error);
+                    // Fall through — let exhausted rejection handle it
+                }
             }
         }
 
