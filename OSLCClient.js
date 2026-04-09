@@ -265,14 +265,20 @@ export default class OSLCClient {
         const location = headers['location'];
 
         // 1. JEE Forms auth challenge
+        // In the browser, skip FORM auth when ssoCallback is available — the browser
+        // follows j_security_check redirects transparently, which can send credentials
+        // to an SSO IdP (Keycloak, ADFS) where they don't belong. Let the ssoCallback
+        // handle auth interactively instead.
         if (authMsg === 'authrequired' && !attempted.includes('jee-forms')) {
-            attempted.push('jee-forms');
-            try {
-                const retryResponse = await this._handleJeeFormsAuth(originalRequest);
-                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-            } catch (jeeError) {
-                oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
-                // Fall through to try other auth methods
+            if (isNodeEnvironment || !this.ssoCallback) {
+                attempted.push('jee-forms');
+                try {
+                    const retryResponse = await this._handleJeeFormsAuth(originalRequest);
+                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+                } catch (jeeError) {
+                    oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
+                    // Fall through to try other auth methods
+                }
             }
         }
 
@@ -340,7 +346,7 @@ export default class OSLCClient {
         // 5. Interactive SSO callback as last resort — when all automated methods
         // failed (or none matched) and we still have an auth failure, let the user
         // authenticate interactively via browser window.
-        if (status === 401 && this.ssoCallback && !attempted.includes('sso-interactive')) {
+        if ((status === 401 || authMsg === 'authrequired') && this.ssoCallback && !attempted.includes('sso-interactive')) {
             attempted.push('sso-interactive');
             try {
                 const resourceUrl = originalRequest.url;

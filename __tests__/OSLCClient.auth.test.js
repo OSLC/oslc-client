@@ -51,18 +51,20 @@ describe('OSLCClient constructor auth options', () => {
         expect(client.configuration_context).toBe('some-config');
     });
 
-    test('creates private cookieJar when none provided', () => {
+    test('creates private cookieJar when none provided', async () => {
         const client = new OSLCClient('user', 'pass');
+        await client._ensureInitialized();
         // CookieJar constructor should have been called to create a default jar
         expect(MockCookieJar).toHaveBeenCalled();
         expect(client.jar).toBeInstanceOf(MockCookieJar);
     });
 
-    test('uses provided cookieJar instead of creating a new one', () => {
+    test('uses provided cookieJar instead of creating a new one', async () => {
         const sharedJar = { iAmAJar: true };
         MockCookieJar.mockClear();
 
         const client = new OSLCClient('user', 'pass', null, { cookieJar: sharedJar });
+        await client._ensureInitialized();
         // Should NOT create a new CookieJar — should use the provided one
         expect(MockCookieJar).not.toHaveBeenCalled();
         expect(client.jar).toBe(sharedJar);
@@ -88,9 +90,10 @@ describe('OSLCClient constructor auth options', () => {
 describe('auth dispatch', () => {
     let client;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         jest.clearAllMocks();
         client = new OSLCClient('user', 'pass');
+        await client._ensureInitialized();
     });
 
     test('JEE forms auth — dispatches on authrequired header', async () => {
@@ -353,9 +356,10 @@ const NO_FORM_HTML = `<html><body><h1>Welcome</h1><p>No login form here.</p></bo
 describe('programmatic SSO', () => {
     let client;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         jest.clearAllMocks();
         client = new OSLCClient('ssouser', 'ssopass');
+        await client._ensureInitialized();
     });
 
     test('follows redirect, parses login form, submits credentials, retries original request', async () => {
