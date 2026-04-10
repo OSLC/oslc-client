@@ -324,7 +324,9 @@ export default class OSLCClient {
         }
 
         // 4. Basic auth fallback (plain 401 or authrequired that failed JEE)
+        console.log(`[OSLCClient auth step 4] checking: status=${status}, authMsg=${authMsg}, hasBasic=${attempted.includes('basic')}, hasUserId=${!!this.userid}`);
         if ((status === 401 || authMsg === 'authrequired') && !attempted.includes('basic')) {
+            console.log(`[OSLCClient auth step 4] Trying Basic auth for ${originalRequest?.url?.substring(0, 60)}`);
             attempted.push('basic');
             try {
                 originalRequest.auth = {
@@ -394,9 +396,11 @@ export default class OSLCClient {
             {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Jazz-CSRF-Prevent': '',
+                    'X-Requested-With': 'XMLHttpRequest',
                 },
                 maxRedirects: 0,
-                validateStatus: (status) => status === 302,
+                validateStatus: (status) => status < 400 || status === 401,
             }
         );
 
