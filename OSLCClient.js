@@ -390,46 +390,25 @@ export default class OSLCClient {
         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
 
         if (!isNodeEnvironment) {
-            // In the browser, Jazz CSRF protection requires the login form flow.
-            // Fetch the login page, parse the form (extracting CSRF tokens and
-            // hidden fields), then submit it — same approach as _attemptProgrammaticSso.
-            try {
-                const loginPageResponse = await this.client.get(url.toString(), {
-                    validateStatus: () => true,
-                    _oslcAuthHandled: true,
-                    headers: { 'Accept': 'text/html' },
-                });
-                const html = loginPageResponse?.data;
-                if (typeof html === 'string') {
-                    const formData = this._parseLoginForm(html, url.toString());
-                    if (formData) {
-                        // Use the parsed form action and include all hidden fields (CSRF tokens)
-                        const params = new URLSearchParams(formData.fields);
-                        if (formData.usernameField) params.set(formData.usernameField, this.userid);
-                        if (formData.passwordField) params.set(formData.passwordField, this.password);
+            // Browser path: POST with credentials in query string (not body).
+            // Jazz j_security_check accepts query params and this avoids CSRF
+            // issues with POST body handling. Use minimal headers — no OSLC
+            // headers that would identify this as a non-standard request.
+            const authUrl = `${url.toString()}?j_username=${encodeURIComponent(this.userid)}&j_password=${encodeURIComponent(this.password)}`;
+            await this.client.post(authUrl, null, {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                validateStatus: () => true,
+                _oslcAuthHandled: true,
+                fetchOptions: { redirect: 'manual' },
+            });
 
-                        const postConfig = {
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            validateStatus: () => true,
-                            _oslcAuthHandled: true,
-                        };
-                        if (!isNodeEnvironment) {
-                            postConfig.fetchOptions = { redirect: 'manual' };
-                        }
-
-                        await this.client.post(formData.action, params.toString(), postConfig);
-
-                        // Retry the original request with updated cookies
-                        originalRequest._oslcAuthHandled = true;
-                        return await this.client.request(originalRequest);
-                    }
-                }
-            } catch (e) {
-                // Fall through to direct POST
-            }
+            originalRequest._oslcAuthHandled = true;
+            return await this.client.request(originalRequest);
         }
 
-        // Node.js path (or browser fallback): direct POST to j_security_check
+        // Node.js path: direct POST with credentials in body
         await this.client.post(url.toString(),
             new URLSearchParams({
                 'j_username': this.userid,
