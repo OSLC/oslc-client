@@ -268,20 +268,14 @@ export default class OSLCClient {
         console.log(`[OSLCClient auth] status=${status}, authMsg=${authMsg}, isNode=${isNodeEnvironment}, hasSsoCallback=${!!this.ssoCallback}, attempted=[${attempted}], url=${originalRequest?.url?.substring(0, 80)}`);
 
         // 1. JEE Forms auth challenge
-        // In the browser, skip FORM auth when ssoCallback is available — the browser
-        // follows j_security_check redirects transparently, which can send credentials
-        // to an SSO IdP (Keycloak, ADFS) where they don't belong. Let the ssoCallback
-        // handle auth interactively instead.
         if (authMsg === 'authrequired' && !attempted.includes('jee-forms')) {
-            if (isNodeEnvironment || !this.ssoCallback) {
-                attempted.push('jee-forms');
-                try {
-                    const retryResponse = await this._handleJeeFormsAuth(originalRequest);
-                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-                } catch (jeeError) {
-                    oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
-                    // Fall through to try other auth methods
-                }
+            attempted.push('jee-forms');
+            try {
+                const retryResponse = await this._handleJeeFormsAuth(originalRequest);
+                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+            } catch (jeeError) {
+                oslcClientLogHttpError('JEE form auth failed, trying other methods', jeeError);
+                // Fall through to try other auth methods
             }
         }
 
@@ -330,25 +324,20 @@ export default class OSLCClient {
         }
 
         // 4. Basic auth fallback (plain 401 or authrequired that failed JEE)
-        // In the browser, skip Basic auth when ssoCallback is available — the browser
-        // follows redirects transparently, so Basic auth credentials can end up at an
-        // SSO IdP where they don't belong. Let ssoCallback handle auth interactively.
         if ((status === 401 || authMsg === 'authrequired') && !attempted.includes('basic')) {
-            if (isNodeEnvironment || !this.ssoCallback) {
-                attempted.push('basic');
-                try {
-                    originalRequest.auth = {
-                        username: this.userid,
-                        password: this.password,
-                    };
-                    originalRequest._oslcAuthHandled = true;
-                    const retryResponse = await this.client.request(originalRequest);
-                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-                } catch (error) {
+            attempted.push('basic');
+            try {
+                originalRequest.auth = {
+                    username: this.userid,
+                    password: this.password,
+                };
+                originalRequest._oslcAuthHandled = true;
+                const retryResponse = await this.client.request(originalRequest);
+                return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+            } catch (error) {
                     oslcClientLogHttpError('Basic auth failed', error);
                     // Fall through — let exhausted rejection handle it
                 }
-            }
         }
 
         // 5. Interactive SSO callback as last resort — when all automated methods
