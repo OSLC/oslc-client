@@ -389,42 +389,60 @@ export default class OSLCClient {
         const paths = url.pathname.split('/');
         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
 
-        // In the browser, GET the login page first to establish a clean auth session.
-        // Jazz CSRF protection rejects direct POSTs to j_security_check unless
-        // the session was established through the proper login flow.
         if (!isNodeEnvironment) {
+            // In the browser, Jazz CSRF protection requires the login form flow.
+            // Fetch the login page, parse the form (extracting CSRF tokens and
+            // hidden fields), then submit it — same approach as _attemptProgrammaticSso.
             try {
-                await this.client.get(url.toString(), {
+                const loginPageResponse = await this.client.get(url.toString(), {
                     validateStatus: () => true,
-                    _oslcAuthHandled: true, // Don't re-dispatch auth for this request
+                    _oslcAuthHandled: true,
+                    headers: { 'Accept': 'text/html' },
                 });
-            } catch {
-                // Ignore — the GET may fail, but it establishes the session cookie
+                const html = loginPageResponse?.data;
+                if (typeof html === 'string') {
+                    const formData = this._parseLoginForm(html, url.toString());
+                    if (formData) {
+                        // Use the parsed form action and include all hidden fields (CSRF tokens)
+                        const params = new URLSearchParams(formData.fields);
+                        if (formData.usernameField) params.set(formData.usernameField, this.userid);
+                        if (formData.passwordField) params.set(formData.passwordField, this.password);
+
+                        const postConfig = {
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            validateStatus: () => true,
+                            _oslcAuthHandled: true,
+                        };
+                        if (!isNodeEnvironment) {
+                            postConfig.fetchOptions = { redirect: 'manual' };
+                        }
+
+                        await this.client.post(formData.action, params.toString(), postConfig);
+
+                        // Retry the original request with updated cookies
+                        originalRequest._oslcAuthHandled = true;
+                        return await this.client.request(originalRequest);
+                    }
+                }
+            } catch (e) {
+                // Fall through to direct POST
             }
         }
 
-        const postConfig = {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            maxRedirects: 0,
-            validateStatus: () => true,
-            _oslcAuthHandled: true, // Don't re-dispatch auth for j_security_check itself
-        };
-
-        if (!isNodeEnvironment) {
-            postConfig.fetchOptions = { redirect: 'manual' };
-        }
-
+        // Node.js path (or browser fallback): direct POST to j_security_check
         await this.client.post(url.toString(),
             new URLSearchParams({
                 'j_username': this.userid,
                 'j_password': this.password,
             }).toString(),
-            postConfig
+            {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                maxRedirects: 0,
+                validateStatus: () => true,
+                _oslcAuthHandled: true,
+            }
         );
 
-        // After successful login, retry the original request with updated cookies
         originalRequest._oslcAuthHandled = true;
         return await this.client.request(originalRequest);
     }
