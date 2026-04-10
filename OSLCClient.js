@@ -179,6 +179,7 @@ export default class OSLCClient {
         this.password = password;
         this.configuration_context = configuration_context;
         this.ssoCallback = options.ssoCallback ?? null;
+        this.jeeFormsAuthCallback = options.jeeFormsAuthCallback ?? null;
         this._ldmBaseUrl = options.ldmBaseUrl || null;
         this.rootservices = null;
         this.spc = null;
@@ -382,10 +383,19 @@ export default class OSLCClient {
     async _handleJeeFormsAuth(originalRequest) {
         let url = new URL(originalRequest.url);
         const paths = url.pathname.split('/');
+        const serverBase = `${url.protocol}//${url.host}${paths[1] ? '/' + paths[1] : ''}`;
         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
 
-        if (!isNodeEnvironment) {
-            console.warn('Form-based authentication in browser requires CORS-enabled backend or proxy');
+        // In the browser, Jazz CSRF protection rejects cross-origin j_security_check POST.
+        // Use the jeeFormsAuthCallback (if provided) to perform the POST from Node.js.
+        if (!isNodeEnvironment && this.jeeFormsAuthCallback) {
+            const result = await this.jeeFormsAuthCallback(serverBase, this.userid, this.password);
+            if (!result?.success) {
+                throw new Error(result?.error || 'JEE Forms auth failed via callback');
+            }
+            // Retry the original request — session cookies should be established
+            originalRequest._oslcAuthHandled = true;
+            return await this.client.request(originalRequest);
         }
 
         await this.client.post(url.toString(),
