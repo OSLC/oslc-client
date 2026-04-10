@@ -389,20 +389,29 @@ export default class OSLCClient {
         const paths = url.pathname.split('/');
         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
 
+        // In the browser, GET the login page first to establish a clean auth session.
+        // Jazz CSRF protection rejects direct POSTs to j_security_check unless
+        // the session was established through the proper login flow.
+        if (!isNodeEnvironment) {
+            try {
+                await this.client.get(url.toString(), {
+                    validateStatus: () => true,
+                    _oslcAuthHandled: true, // Don't re-dispatch auth for this request
+                });
+            } catch {
+                // Ignore — the GET may fail, but it establishes the session cookie
+            }
+        }
+
         const postConfig = {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Jazz-CSRF-Prevent': '',
-                'X-Requested-With': 'XMLHttpRequest',
             },
             maxRedirects: 0,
-            validateStatus: () => true, // Accept any status — we just need cookies set
+            validateStatus: () => true,
+            _oslcAuthHandled: true, // Don't re-dispatch auth for j_security_check itself
         };
 
-        // In the browser, use redirect: 'manual' on j_security_check so the
-        // POST response (with Set-Cookie) is captured instead of following
-        // the redirect to the resource. This is the key to making JEE Forms
-        // work from the browser.
         if (!isNodeEnvironment) {
             postConfig.fetchOptions = { redirect: 'manual' };
         }
