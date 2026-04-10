@@ -389,37 +389,30 @@ export default class OSLCClient {
         const paths = url.pathname.split('/');
         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
 
-        if (!isNodeEnvironment) {
-            // Browser path: POST with credentials in query string (not body).
-            // Jazz j_security_check accepts query params and this avoids CSRF
-            // issues with POST body handling. Use minimal headers — no OSLC
-            // headers that would identify this as a non-standard request.
-            const authUrl = `${url.toString()}?j_username=${encodeURIComponent(this.userid)}&j_password=${encodeURIComponent(this.password)}`;
-            await this.client.post(authUrl, null, {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                validateStatus: () => true,
-                _oslcAuthHandled: true,
-                fetchOptions: { redirect: 'manual' },
-            });
+        // POST to j_security_check with credentials in body.
+        // Override axios default headers (OSLC-Core-Version, Accept) — j_security_check
+        // is a plain form submission, not an OSLC request.
+        const postConfig = {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': '*/*',
+                'OSLC-Core-Version': undefined, // Remove OSLC default header
+            },
+            maxRedirects: 0,
+            validateStatus: () => true,
+            _oslcAuthHandled: true,
+        };
 
-            originalRequest._oslcAuthHandled = true;
-            return await this.client.request(originalRequest);
+        if (!isNodeEnvironment) {
+            postConfig.fetchOptions = { redirect: 'manual' };
         }
 
-        // Node.js path: direct POST with credentials in body
         await this.client.post(url.toString(),
             new URLSearchParams({
                 'j_username': this.userid,
                 'j_password': this.password,
             }).toString(),
-            {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                maxRedirects: 0,
-                validateStatus: () => true,
-                _oslcAuthHandled: true,
-            }
+            postConfig
         );
 
         originalRequest._oslcAuthHandled = true;
