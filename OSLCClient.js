@@ -203,12 +203,11 @@ export default class OSLCClient {
         if (isNodeEnvironment) {
             baseConfig.keepAlive = true;
         } else {
-            // Use fetch adapter with manual redirects so the auth interceptor
-            // can see intermediate redirects (302 to IdP, etc.) the same as
-            // Node.js with maxRedirects: 0. XMLHttpRequest follows redirects
-            // transparently which breaks the auth protocol handling.
+            // Use fetch adapter instead of XMLHttpRequest. The fetch adapter
+            // supports per-request redirect control via fetchOptions, which
+            // is needed for j_security_check (redirect: 'manual').
+            // Default redirect behavior is 'follow' (same as XHR).
             baseConfig.adapter = 'fetch';
-            baseConfig.fetchOptions = { redirect: 'manual' };
             baseConfig.withCredentials = true;
         }
         this.client = axios.create(baseConfig);
@@ -390,20 +389,30 @@ export default class OSLCClient {
         const paths = url.pathname.split('/');
         url.pathname = paths[1] ? `/${paths[1]}/j_security_check` : '/j_security_check';
 
+        const postConfig = {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Jazz-CSRF-Prevent': '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            maxRedirects: 0,
+            validateStatus: () => true, // Accept any status — we just need cookies set
+        };
+
+        // In the browser, use redirect: 'manual' on j_security_check so the
+        // POST response (with Set-Cookie) is captured instead of following
+        // the redirect to the resource. This is the key to making JEE Forms
+        // work from the browser.
+        if (!isNodeEnvironment) {
+            postConfig.fetchOptions = { redirect: 'manual' };
+        }
+
         await this.client.post(url.toString(),
             new URLSearchParams({
                 'j_username': this.userid,
                 'j_password': this.password,
             }).toString(),
-            {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Jazz-CSRF-Prevent': '',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                maxRedirects: 0,
-                validateStatus: (status) => status < 400 || status === 401,
-            }
+            postConfig
         );
 
         // After successful login, retry the original request with updated cookies
