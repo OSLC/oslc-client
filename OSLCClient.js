@@ -396,7 +396,7 @@ export default class OSLCClient {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Accept': '*/*',
-                'OSLC-Core-Version': undefined, // Remove OSLC default header
+                'OSLC-Core-Version': null, // Remove OSLC default header
             },
             maxRedirects: 0,
             validateStatus: () => true,
