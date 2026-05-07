@@ -41,7 +41,7 @@
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
     "axios": "^1.13.2",
-    "axios-cookiejar-support": "^6.0.4",
+    "axios-cookiejar-support": "^7.0.0",
     "rdflib": "2.3.5",
     "tough-cookie": "^6.0.0"
   },
