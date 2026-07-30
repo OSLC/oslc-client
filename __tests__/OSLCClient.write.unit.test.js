@@ -192,3 +192,43 @@ describe('deleteResource', () => {
     expect(err.serverMessage).toBe('not permitted');
   });
 });
+
+describe('Configuration-Context on writes', () => {
+  const GC = 'https://server/gc/configuration/1';
+
+  function makeContextClient() {
+    const client = new OSLCClient('testuser', 'testpass', GC);
+    client._initialized = true;
+    // Capture the fully merged request config at the adapter layer, where
+    // axios has already combined defaults.headers.common with per-request headers.
+    client.captured = [];
+    client.client.defaults.adapter = async (config) => {
+      client.captured.push(config);
+      return { status: 200, statusText: 'OK', headers: { etag: '"2"' }, data: '', config };
+    };
+    return client;
+  }
+
+  function headerValue(config, name) {
+    return typeof config.headers?.get === 'function'
+      ? config.headers.get(name)
+      : config.headers?.[name];
+  }
+
+  it('sets the header on axios common defaults at construction', () => {
+    const client = makeContextClient();
+    expect(client.client.defaults.headers.common['Configuration-Context']).toBe(GC);
+  });
+
+  it('PUT requests carry Configuration-Context', async () => {
+    const client = makeContextClient();
+    await client.putResource(makeResource());
+    expect(headerValue(client.captured[0], 'Configuration-Context')).toBe(GC);
+  });
+
+  it('DELETE requests carry Configuration-Context', async () => {
+    const client = makeContextClient();
+    await client.deleteResource('https://server/r/1');
+    expect(headerValue(client.captured[0], 'Configuration-Context')).toBe(GC);
+  });
+});
