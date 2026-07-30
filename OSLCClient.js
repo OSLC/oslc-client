@@ -922,43 +922,32 @@ export default class OSLCClient {
         return await this.getResource(location);
     }
 
-    async deleteResource(resource, oslc_version = '2.0') {
+    /**
+     * Delete a resource.
+     * @param {OSLCResource|string} resourceOrUrl - the resource, or its URL
+     * @param {string} [oslc_version='2.0']
+     * @returns {undefined}
+     * @throws {OSLCError} on failure (status and server message preserved)
+     */
+    async deleteResource(resourceOrUrl, oslc_version = '2.0') {
         await this._ensureInitialized();
-        const graph = resource.store;
-        if (!graph) {
-            throw new Error('Resource has no data to delete');
-        }
-        const url = resource.getURI(); 
+        const url = typeof resourceOrUrl === 'string' ? resourceOrUrl : resourceOrUrl.getURI();
         const headers = {
             'Accept': 'application/rdf+xml; charset=utf-8',
             'OSLC-Core-Version': oslc_version,
-            'X-Jazz-CSRF-Prevent': '1'
+            ...this._csrfHeaders(url)
         };
-        
-        // In Node.js, try to get JSESSIONID from cookie jar
-        if (isNodeEnvironment && this.jar) {
-            try {
-                const cookies = this.jar.getCookiesSync(url);
-                const sessionCookie = cookies.find(cookie => cookie.key === 'JSESSIONID');
-                if (sessionCookie) {
-                    headers['X-Jazz-CSRF-Prevent'] = sessionCookie.value;
-                }
-            } catch (error) {
-                // If cookie retrieval fails, continue with default value
-                console.debug('Could not retrieve JSESSIONID from cookie jar:', error.message);
-            }
-        }
-        
+        let response;
         try {
-            const response = await this.client.delete(url, { headers });
-            if (response.status !== 200 && response.status !== 204) {
-                oslcClientLogHttpError('Failed to delete resource', response);
-                throw new Error(`Failed to delete resource. Status: ${response.status}\n${response.data}`);
-            }
+            response = await this.client.delete(url, { headers });
         } catch (error) {
             oslcClientLogHttpError('Error deleting resource', error);
-            throw error;
-        }           
+            throw oslcErrorFrom(error, url, 'Failed to delete resource');
+        }
+        if (response.status !== 200 && response.status !== 204) {
+            oslcClientLogHttpError('Failed to delete resource', response);
+            throw oslcErrorFrom(response, url, 'Failed to delete resource');
+        }
         return undefined;
     }
 

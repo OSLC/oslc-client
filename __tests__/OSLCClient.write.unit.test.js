@@ -160,3 +160,35 @@ describe('createResource', () => {
     expect(err.message).toContain('No creation factory');
   });
 });
+
+describe('deleteResource', () => {
+  it('DELETEs a resource object URI with CSRF header, resolves on 204', async () => {
+    const client = makeClient();
+    client.client.delete = jest.fn().mockResolvedValue({ status: 204, headers: {} });
+
+    await expect(client.deleteResource(makeResource('https://server/r/1'))).resolves.toBeUndefined();
+
+    const [url, config] = client.client.delete.mock.calls[0];
+    expect(url).toBe('https://server/r/1');
+    expect(config.headers['X-Jazz-CSRF-Prevent']).toBeDefined();
+  });
+
+  it('accepts a plain URL string', async () => {
+    const client = makeClient();
+    client.client.delete = jest.fn().mockResolvedValue({ status: 200, headers: {} });
+
+    await client.deleteResource('https://server/r/2');
+
+    expect(client.client.delete.mock.calls[0][0]).toBe('https://server/r/2');
+  });
+
+  it('throws OSLCError with status on refusal', async () => {
+    const client = makeClient();
+    client.client.delete = jest.fn().mockRejectedValue(axiosRejection(403, 'Forbidden', 'not permitted'));
+
+    const err = await client.deleteResource('https://server/r/3').catch(e => e);
+    expect(err).toBeInstanceOf(OSLCError);
+    expect(err.status).toBe(403);
+    expect(err.serverMessage).toBe('not permitted');
+  });
+});
