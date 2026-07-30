@@ -919,7 +919,13 @@ export default class OSLCClient {
                 { status: response.status, url: creationFactory }
             );
         }
-        return await this.getResource(location);
+        try {
+            return await this.getResource(location);
+        } catch (error) {
+            oslcClientLogHttpError('Created resource could not be re-fetched', error);
+            throw oslcErrorFrom(error, location,
+                `Resource was created at ${location} but could not be re-fetched — do not retry the create`);
+        }
     }
 
     /**

@@ -159,6 +159,20 @@ describe('createResource', () => {
     expect(err).toBeInstanceOf(OSLCError);
     expect(err.message).toContain('No creation factory');
   });
+
+  it('re-fetch failure after successful create throws a typed error naming the Location (no duplicate-create retry)', async () => {
+    const client = makeCreateClient();
+    client.client.post = jest.fn().mockResolvedValue({
+      status: 201,
+      headers: { location: 'https://server/components/c0/artifacts/new1' }
+    });
+    client.getResource = jest.fn().mockRejectedValue(axiosRejection(500, 'Server Error', 'boom'));
+
+    const err = await client.createResource('http://www.omg.org/spec/BMM#Goal', makeResource()).catch(e => e);
+    expect(err).toBeInstanceOf(OSLCError);
+    expect(err.url).toBe('https://server/components/c0/artifacts/new1');
+    expect(err.message).toContain('do not retry');
+  });
 });
 
 describe('deleteResource', () => {
@@ -229,6 +243,19 @@ describe('Configuration-Context on writes', () => {
   it('DELETE requests carry Configuration-Context', async () => {
     const client = makeContextClient();
     await client.deleteResource('https://server/r/1');
+    expect(headerValue(client.captured[0], 'Configuration-Context')).toBe(GC);
+  });
+
+  it('POST (createResource) requests carry Configuration-Context', async () => {
+    const client = makeContextClient();
+    client.sp = { getCreationFactory: jest.fn(() => 'https://server/components/c0/artifacts') };
+    client.getResource = jest.fn().mockResolvedValue({ getURI: () => 'https://server/r/new1', etag: '"1"' });
+    // adapter must return a Location so createResource proceeds
+    client.client.defaults.adapter = async (config) => {
+      client.captured.push(config);
+      return { status: 201, statusText: 'Created', headers: { location: 'https://server/r/new1' }, data: '', config };
+    };
+    await client.createResource('http://www.omg.org/spec/BMM#Goal', makeResource());
     expect(headerValue(client.captured[0], 'Configuration-Context')).toBe(GC);
   });
 });
