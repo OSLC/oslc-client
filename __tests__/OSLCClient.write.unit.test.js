@@ -107,3 +107,56 @@ describe('putResource', () => {
     expect(err.serverMessage).toBe('missing required property');
   });
 });
+
+describe('createResource', () => {
+  function makeCreateClient() {
+    const client = makeClient();
+    client.sp = { getCreationFactory: jest.fn(() => 'https://server/components/c0/artifacts') };
+    client.getResource = jest.fn().mockResolvedValue({ getURI: () => 'https://server/components/c0/artifacts/new1', etag: '"1"' });
+    return client;
+  }
+
+  it('POSTs to the creation factory with CSRF header and returns the fetched resource', async () => {
+    const client = makeCreateClient();
+    client.client.post = jest.fn().mockResolvedValue({
+      status: 201,
+      headers: { location: 'https://server/components/c0/artifacts/new1' }
+    });
+
+    const created = await client.createResource('http://www.omg.org/spec/BMM#Goal', makeResource());
+
+    const [url, body, config] = client.client.post.mock.calls[0];
+    expect(url).toBe('https://server/components/c0/artifacts');
+    expect(body).toBe('<rdf:RDF/>');
+    expect(config.headers['X-Jazz-CSRF-Prevent']).toBeDefined();
+    expect(client.getResource).toHaveBeenCalledWith('https://server/components/c0/artifacts/new1');
+    expect(created.getURI()).toBe('https://server/components/c0/artifacts/new1');
+  });
+
+  it('throws ConflictError on 409 (duplicate Slug)', async () => {
+    const client = makeCreateClient();
+    client.client.post = jest.fn().mockRejectedValue(axiosRejection(409, 'Conflict', 'Slug already exists'));
+
+    const err = await client.createResource('http://www.omg.org/spec/BMM#Goal', makeResource()).catch(e => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.serverMessage).toBe('Slug already exists');
+  });
+
+  it('throws OSLCError when creation succeeds without a Location header', async () => {
+    const client = makeCreateClient();
+    client.client.post = jest.fn().mockResolvedValue({ status: 201, headers: {} });
+
+    const err = await client.createResource('http://www.omg.org/spec/BMM#Goal', makeResource()).catch(e => e);
+    expect(err).toBeInstanceOf(OSLCError);
+    expect(err.message).toContain('Location');
+  });
+
+  it('throws OSLCError when no creation factory exists for the type', async () => {
+    const client = makeCreateClient();
+    client.sp.getCreationFactory.mockReturnValue(null);
+
+    const err = await client.createResource('http://example.com/Unknown', makeResource()).catch(e => e);
+    expect(err).toBeInstanceOf(OSLCError);
+    expect(err.message).toContain('No creation factory');
+  });
+});

@@ -875,37 +875,51 @@ export default class OSLCClient {
         return resource;
     }
 
+    /**
+     * Create a resource by POSTing to the creation factory for resourceType.
+     * @param {string|Symbol} resourceType - the oslc:resourceType of the factory
+     * @param {OSLCResource} resource - the resource content to create
+     * @param {string} [oslc_version='2.0']
+     * @returns {OSLCResource} the created resource, re-fetched from the Location header
+     * @throws {ConflictError} on 409 (e.g. duplicate Slug)
+     * @throws {OSLCError} on any other failure, including a missing Location header
+     */
     async createResource(resourceType, resource, oslc_version = '2.0') {
         await this._ensureInitialized();
         const graph = resource.store;
         if (!graph) {
-            throw new Error('Resource has no data to create');
+            throw new OSLCError('Resource has no data to create');
         }
         const creationFactory = this.sp.getCreationFactory(resourceType);
         if (!creationFactory) {
-            throw new Error(`No creation factory found for ${resourceType}`);
+            throw new OSLCError(`No creation factory found for ${resourceType}`);
         }
         const headers = {
             'Content-Type': 'application/rdf+xml; charset=utf-8',
             'Accept': 'application/rdf+xml; charset=utf-8',
-            'OSLC-Core-Version': oslc_version
+            'OSLC-Core-Version': oslc_version,
+            ...this._csrfHeaders(creationFactory)
         };
-        
         const body = graph.serialize(null, 'application/rdf+xml');
-        let response = null;
+        let response;
         try {
             response = await this.client.post(creationFactory, body, { headers });
-            if (response.status !== 200 && response.status !== 201) {
-                oslcClientLogHttpError('Failed to create resource', response);
-                throw new Error(`Failed to create resource. Status: ${response.status}\n${response.data}`);
-            }        
         } catch (error) {
             oslcClientLogHttpError('Error creating resource', error);
-            throw error;
-        }        
+            throw oslcErrorFrom(error, creationFactory, 'Failed to create resource');
+        }
+        if (response.status !== 200 && response.status !== 201) {
+            oslcClientLogHttpError('Failed to create resource', response);
+            throw oslcErrorFrom(response, creationFactory, 'Failed to create resource');
+        }
         const location = response.headers.location;
-        resource = await this.getResource(location);
-        return resource;
+        if (!location) {
+            throw new OSLCError(
+                `Create succeeded (${response.status}) but the server returned no Location header: ${creationFactory}`,
+                { status: response.status, url: creationFactory }
+            );
+        }
+        return await this.getResource(location);
     }
 
     async deleteResource(resource, oslc_version = '2.0') {
