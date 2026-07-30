@@ -4,7 +4,7 @@ Write-path extensions for generic OSLC CRUD clients (Resource Navigator):
 
 - New `errors.js` module: `OSLCError` (status, statusText, serverMessage, url),
   `PreconditionFailedError` (412), `ConflictError` (409), and `oslcErrorFrom()`.
-  All CRUD methods now throw typed errors. Exported from the package root.
+  Write methods (`putResource`, `createResource`, `deleteResource`) now throw typed errors. Exported from the package root.
 - `putResource(resource, eTag?)`: when `eTag` is omitted, `resource.etag` is used
   as `If-Match` automatically (pass `'*'` for unconditional update); the response
   `ETag` is written back to `resource.etag` on success.

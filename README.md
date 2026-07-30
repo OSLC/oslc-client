@@ -213,7 +213,7 @@ const linkDialog = serviceProvider
 import { OSLCError, PreconditionFailedError, ConflictError } from 'oslc-client';
 ```
 
-All CRUD methods on `OSLCClient` (`putResource`, `createResource`, `deleteResource`, `getResource`, etc.) throw typed errors from `errors.js` on failure instead of raw axios rejections. `OSLCError` is the base class, carrying `status`, `statusText`, `serverMessage` (the response body, if any), and `url`. Two subclasses map to specific HTTP statuses that write-path callers commonly need to branch on:
+Write methods on `OSLCClient` (`putResource`, `createResource`, `deleteResource`) throw typed errors from `errors.js` on failure instead of raw axios rejections. `OSLCError` is the base class, carrying `status`, `statusText`, `serverMessage` (the response body, if any), and `url`. Two subclasses map to specific HTTP statuses that write-path callers commonly need to branch on:
 
 - `PreconditionFailedError` — HTTP 412, an `If-Match` ETag mismatch (someone else updated the resource since it was read).
 - `ConflictError` — HTTP 409, typically a semantic conflict the server rejects (e.g. configuration or state conflict).
