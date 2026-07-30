@@ -78,15 +78,15 @@ Fetches an OSLC Compact (UI Preview) resource. Returns a `Compact` object with `
 
 #### `client.putResource(resource, eTag?, oslcVersion?)`
 
-Serializes the resource's RDF graph to `application/rdf+xml` and PUTs it back to the server. Pass the resource's `etag` to enable optimistic concurrency via `If-Match`.
+Serializes the resource's RDF graph to `application/rdf+xml` and PUTs it back to the server. `eTag` is optional: when omitted, `resource.etag` (the value captured by a prior `getResource`/`putResource`/`createResource` call) is sent as `If-Match` automatically, so a typical read-modify-write round trip does not need to pass it explicitly. Pass `'*'` to force an unconditional update regardless of `resource.etag`. On a successful response, the server's `ETag` header is written back to `resource.etag`, so the resource is immediately ready for another update without re-fetching. Sends `X-Jazz-CSRF-Prevent` automatically. Throws a typed error from `errors.js` on failure (see [Error Handling](#error-handling) below) — in particular a `PreconditionFailedError` on a 412 `If-Match` mismatch.
 
 #### `client.createResource(resourceType, resource, oslcVersion?)`
 
-Creates a new resource using the creation factory discovered from the current service provider. `resourceType` is the OSLC resource type URI. Returns the newly created `OSLCResource` (fetched from the `Location` header).
+Creates a new resource using the creation factory discovered from the current service provider. `resourceType` is the OSLC resource type URI. Sends `X-Jazz-CSRF-Prevent` automatically. Returns the newly created `OSLCResource` (fetched from the `Location` header). Throws an `OSLCError` if the server responds with success but no `Location` header, or a typed error (e.g. `ConflictError` on 409) for any HTTP failure.
 
 #### `client.deleteResource(resource, oslcVersion?)`
 
-Deletes the resource at its URI.
+Deletes the resource at its URI. `resource` may be an `OSLCResource` instance or a plain URL string. Throws a typed error from `errors.js` on failure.
 
 #### `client.queryResources(resourceType, query)`
 
@@ -161,6 +161,79 @@ Returns a `Set` of predicate URIs where the object is a `NamedNode` (i.e., outgo
 #### `resource.getOutgoingLinks(linkTypes?)`
 
 Returns an array of `{ sourceURL, linkType, targetURL }` objects for outgoing links. Optionally filter by a `Set` or `Array` of link type URIs.
+
+---
+
+### ServiceProvider
+
+```js
+import ServiceProvider from 'oslc-client/ServiceProvider.js';
+```
+
+Encapsulates an OSLC `ServiceProvider` resource — the document that advertises a project area's (or configuration's) creation factories, query capabilities, and dialogs. An instance is obtained internally by `client.use()`.
+
+#### `serviceProvider.getCreationFactory(resourceType)`
+
+Returns the single creation URL (a string) for the `oslc:creationFactory` matching `resourceType`, or `null` if none matches. Kept for backward compatibility; prefer `getCreationFactories` when a resource type may be advertised by more than one factory.
+
+#### `serviceProvider.getCreationFactories(resourceType?)` / `getCreationDialogs(resourceType?)` / `getSelectionDialogs(resourceType?)`
+
+Return the **full list** of descriptors for `oslc:creationFactory`, `oslc:creationDialog`, and `oslc:selectionDialog` capabilities respectively, optionally filtered to those advertising the given `resourceType` (a URI string or rdflib `NamedNode`; string matching is exact-or-suffix, same as `getCreationFactory`). Omit `resourceType` (or pass `null`) to get every capability of that kind.
+
+Each descriptor has the shape:
+
+```ts
+{
+  url: string | null,           // oslc:creation (factories) or oslc:dialog (dialogs)
+  resourceTypes: string[],       // all oslc:resourceType URIs on the capability
+  resourceShape: string | null,  // oslc:resourceShape
+  label: string | null,          // oslc:label
+  title: string | null,          // dcterms:title
+  hintWidth: string | null,      // oslc:hintWidth — dialogs only
+  hintHeight: string | null,     // oslc:hintHeight — dialogs only
+  usages: string[]               // all oslc:usage URIs on the capability
+}
+```
+
+`getCreationFactories` omits `hintWidth`/`hintHeight` since creation factories don't have dialog sizing hints.
+
+The `usages` field is what lets a consumer tell capabilities apart when a server advertises more than one dialog of the same kind for the same resource type. For example, Jazz/ELM servers advertise the "Add Link" picker as an ordinary `oslc:selectionDialog` for the target resource type, distinguished only by a specific `oslc:usage` URI — without inspecting `usages`, it's indistinguishable from a plain "select an existing resource" dialog:
+
+```js
+const AddLinkUsage = 'http://open-services.net/ns/rm#addLink'; // example — check the server's actual usage URI
+
+const linkDialog = serviceProvider
+  .getSelectionDialogs('http://open-services.net/ns/rm#Requirement')
+  .find(d => d.usages.includes(AddLinkUsage));
+```
+
+## Error Handling
+
+```js
+import { OSLCError, PreconditionFailedError, ConflictError } from 'oslc-client';
+```
+
+All CRUD methods on `OSLCClient` (`putResource`, `createResource`, `deleteResource`, `getResource`, etc.) throw typed errors from `errors.js` on failure instead of raw axios rejections. `OSLCError` is the base class, carrying `status`, `statusText`, `serverMessage` (the response body, if any), and `url`. Two subclasses map to specific HTTP statuses that write-path callers commonly need to branch on:
+
+- `PreconditionFailedError` — HTTP 412, an `If-Match` ETag mismatch (someone else updated the resource since it was read).
+- `ConflictError` — HTTP 409, typically a semantic conflict the server rejects (e.g. configuration or state conflict).
+
+```js
+import { PreconditionFailedError, ConflictError } from 'oslc-client';
+
+try {
+  await client.putResource(resource);
+} catch (e) {
+  if (e instanceof PreconditionFailedError) {
+    // resource.etag is stale — re-fetch and retry, or prompt the user to reconcile
+    console.warn('[save] stale ETag, refetching:', e.message);
+  } else if (e instanceof ConflictError) {
+    console.warn('[save] server rejected the update:', e.serverMessage);
+  } else {
+    throw e; // OSLCError or another error — not one we handle specially here
+  }
+}
+```
 
 ## Authentication
 

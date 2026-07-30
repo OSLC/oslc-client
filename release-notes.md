@@ -1,3 +1,26 @@
+# 4.1.0
+
+Write-path extensions for generic OSLC CRUD clients (Resource Navigator):
+
+- New `errors.js` module: `OSLCError` (status, statusText, serverMessage, url),
+  `PreconditionFailedError` (412), `ConflictError` (409), and `oslcErrorFrom()`.
+  All CRUD methods now throw typed errors. Exported from the package root.
+- `putResource(resource, eTag?)`: when `eTag` is omitted, `resource.etag` is used
+  as `If-Match` automatically (pass `'*'` for unconditional update); the response
+  `ETag` is written back to `resource.etag` on success.
+- `X-Jazz-CSRF-Prevent` is now sent on PUT and POST-create, matching DELETE.
+- `createResource` throws a clear `OSLCError` when the server returns success
+  without a `Location` header.
+- `deleteResource` also accepts a plain URL string.
+- `ServiceProvider`: new `getCreationFactories(resourceType?)`,
+  `getCreationDialogs(resourceType?)`, `getSelectionDialogs(resourceType?)`
+  returning full descriptor lists ({url, resourceTypes, resourceShape, label,
+  title, hintWidth, hintHeight, usages}) — `usages` lets consumers identify
+  special dialogs such as the genoslc Add Link dialog (advertised as a standard
+  selection dialog with a distinguishing `oslc:usage`). Existing single-match
+  `getCreationFactory` is unchanged.
+- Regression tests lock the `Configuration-Context` header onto all write methods.
+
 oslc-client 4.0.0 — Unified browser/Node.js architecture
 
 Breaking Changes:
