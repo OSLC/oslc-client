@@ -7,6 +7,7 @@ import Compact from './Compact.js';
 import RootServices from './RootServices.js';
 import ServiceProviderCatalog from './ServiceProviderCatalog.js';
 import ServiceProvider from './ServiceProvider.js';
+import { OSLCError, oslcErrorFrom } from './errors.js';
 
 // Conditional imports for Node.js only — loaded lazily to avoid top-level await
 // which prevents browser bundlers (esbuild/webpack) from processing this module.
@@ -805,30 +806,71 @@ export default class OSLCClient {
         return new Compact(url, graph, etag);
     }
 
+    /**
+     * Headers for Jazz CSRF protection on write requests (POST/PUT/DELETE).
+     * Uses the JSESSIONID cookie value in Node.js when available, else '1'.
+     * Servers that do not use Jazz CSRF protection ignore this header.
+     * @param {string} url - the request URL (for cookie-jar lookup)
+     * @returns {Object} headers to merge into the request
+     */
+    _csrfHeaders(url) {
+        const headers = { 'X-Jazz-CSRF-Prevent': '1' };
+        if (isNodeEnvironment && this.jar) {
+            try {
+                const cookies = this.jar.getCookiesSync(url);
+                const sessionCookie = cookies.find(cookie => cookie.key === 'JSESSIONID');
+                if (sessionCookie) {
+                    headers['X-Jazz-CSRF-Prevent'] = sessionCookie.value;
+                }
+            } catch (error) {
+                console.debug('Could not retrieve JSESSIONID from cookie jar:', error.message);
+            }
+        }
+        return headers;
+    }
 
+    /**
+     * Update a resource with HTTP PUT (full replace).
+     * @param {OSLCResource} resource - the resource to update; resource.etag is
+     *   used as If-Match when the eTag argument is omitted
+     * @param {string|null} [eTag=null] - explicit If-Match value; overrides
+     *   resource.etag; pass '*' for unconditional update
+     * @param {string} [oslc_version='2.0']
+     * @returns {OSLCResource} the same resource, with etag refreshed from the response
+     * @throws {PreconditionFailedError} on 412 (stale ETag)
+     * @throws {OSLCError} on any other failure
+     */
     async putResource(resource, eTag = null, oslc_version = '2.0') {
         await this._ensureInitialized();
         const graph = resource.store;
         if (!graph) {
-            throw new Error('Resource has no data to update');
+            throw new OSLCError('Resource has no data to update', { url: resource.getURI?.() });
         }
-        const url = resource.getURI(); 
+        const url = resource.getURI();
         const headers = {
             'OSLC-Core-Version': oslc_version,
             'Content-Type': 'application/rdf+xml; charset=utf-8',
-            'Accept': 'application/rdf+xml'
-        };        
-        if (eTag) {
-            headers['If-Match'] = eTag;
-        }        
-        const body = graph.serialize(null, 'application/rdf+xml');     
-        const response = await this.client.put(url, body, { headers });
-        
+            'Accept': 'application/rdf+xml',
+            ...this._csrfHeaders(url)
+        };
+        const ifMatch = eTag ?? resource.etag;
+        if (ifMatch) {
+            headers['If-Match'] = ifMatch;
+        }
+        const body = graph.serialize(null, 'application/rdf+xml');
+        let response;
+        try {
+            response = await this.client.put(url, body, { headers });
+        } catch (error) {
+            oslcClientLogHttpError('Failed to update resource', error);
+            throw oslcErrorFrom(error, url, 'Failed to update resource');
+        }
         if (response.status !== 200 && response.status !== 201) {
             oslcClientLogHttpError('Failed to update resource', response);
-            throw new Error(
-                `Failed to update resource ${url}. Status: ${response.status}\n${response.data}`
-            );
+            throw oslcErrorFrom(response, url, 'Failed to update resource');
+        }
+        if (response.headers?.etag) {
+            resource.etag = response.headers.etag;
         }
         return resource;
     }
