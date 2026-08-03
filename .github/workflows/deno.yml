@@ -39,7 +39,14 @@ jobs:
 
 
       - name: Install deps
-        run: deno install
+        # --no-lock: Deno seeds deno.lock from package-lock.json, and since
+        # Deno 2.9.x that seeding produces an unreadable lock for this
+        # dependency graph ("Could not find 'mime-types@2.1.35' in the list of
+        # packages" — nested axios/node_modules/form-data resolving to the
+        # hoisted top-level entry). Deno 2.0.3 handled it; regenerating
+        # package-lock.json does NOT help. Skipping the lock avoids the seeding
+        # step entirely. Node.js CI is the authoritative test workflow.
+        run: deno install --no-lock
       
       # Uncomment this step to verify the use of 'deno fmt' on each commit.
       # TODO: enable fmt
