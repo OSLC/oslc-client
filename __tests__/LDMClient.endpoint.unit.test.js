@@ -93,17 +93,6 @@ describe('incoming-links endpoint selection', () => {
     expect(attempted.some((u) => u.includes('/incoming-links'))).toBe(true);
   });
 
-  test('falls back to the default dataset when the bare path 404s', async () => {
-    // Only the dataset-qualified URL is served.
-    const { oslc, attempted } = makeClient(['/incoming-links/default']);
-    const ldm = new LDMClient(oslc, 'https://server.example.com/ldx');
-
-    const links = await ldm.getIncomingLinks([TARGET]);
-
-    expect(attempted).toContain('https://server.example.com/ldx/incoming-links');
-    expect(attempted).toContain('https://server.example.com/ldx/incoming-links/default');
-    expect(Array.isArray(links)).toBe(true);
-  });
 
   test('falls back to OSLC LDM discover-links when no incoming-links variant exists', async () => {
     // Neutral base: no hint, so incoming-links is tried first and must fall through.
@@ -126,19 +115,21 @@ describe('incoming-links endpoint selection', () => {
   });
 
   test('remembers the endpoint that worked instead of re-probing every query', async () => {
-    const { oslc, attempted } = makeClient(['/incoming-links/default']);
+    // An /ldx base tries incoming-links first, which 404s here, then falls
+    // through to discover-links — two requests on the first query, one after.
+    const { oslc, attempted } = makeClient(['/discover-links'], '');
     const ldm = new LDMClient(oslc, 'https://server.example.com/ldx');
 
     await ldm.getIncomingLinks([TARGET]);
     const afterFirst = attempted.length;
-    expect(afterFirst).toBe(2); // bare path 404s, then the dataset answers
+    expect(afterFirst).toBeGreaterThan(1);
 
     await ldm.getIncomingLinks([TARGET]);
 
     // Second query goes straight to the known-good endpoint.
     expect(attempted.length).toBe(afterFirst + 1);
     expect(attempted[attempted.length - 1]).toBe(
-      'https://server.example.com/ldx/incoming-links/default'
+      'https://server.example.com/ldx/discover-links'
     );
   });
 
@@ -155,6 +146,71 @@ describe('incoming-links endpoint selection', () => {
     expect(params.get('oslc_config.context')).toBe('https://server/gc/configuration/123');
     expect(config.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
     expect(config.headers['Accept']).toBe('application/json');
+  });
+
+  test('does not try a dataset-qualified path — the servlet mapping is exact', async () => {
+    // GET /lqe/incoming-links returns 500 (servlet mapped, threw on GET) while
+    // GET /lqe/incoming-links/default returns 404 (not routed). The API doc's
+    // Implementation Reference says "Servlet Mapping: /incoming-links", which the
+    // server confirms; its curl examples showing /default contradict it. A
+    // dataset segment, where a deployment needs one, belongs in configuration.
+    const { oslc, attempted } = makeClient(['/discover-links'], '');
+    const ldm = new LDMClient(oslc, 'https://server.example.com/ldx');
+
+    await ldm.getIncomingLinks([TARGET]);
+
+    expect(attempted.every((u) => !u.includes('/incoming-links/'))).toBe(true);
+  });
+
+  test('reports the most relevant endpoint failure, not the last one tried', async () => {
+    // Candidates are ordered most-likely-first, so the FIRST failure is the
+    // informative one. Reporting the last discarded LQE's actual explanation and
+    // left only the OSLC LDM endpoint's generic 404.
+    const attempted = [];
+    const oslc = {
+      userid: 'u', password: 'p', configuration_context: null,
+      client: {
+        defaults: { headers: { common: {} } },
+        get: jest.fn(),
+        post: jest.fn(async (url) => {
+          attempted.push(url);
+          const error = new Error('Request failed with status code 404');
+          error.response = {
+            status: 404,
+            headers: {},
+            config: { url },
+            data: url.includes('/incoming-links')
+              ? 'Configuration https://server/cdcm/.../configuration/abc does not exist in the index or is not a configuration.'
+              : 'Not Found',
+          };
+          throw error;
+        }),
+      },
+    };
+    const ldm = new LDMClient(oslc, 'https://server.example.com/lqe');
+
+    await expect(ldm.getIncomingLinks([TARGET])).rejects.toThrow(/incoming-links/);
+    await expect(ldm.getIncomingLinks([TARGET])).rejects.toThrow(/does not exist in the index/);
+  });
+
+  test('surfaces a plain-text error body instead of the bare axios message', async () => {
+    // The wrapper read response.data.error, so a text/plain body fell through to
+    // "Request failed with status code 404" and the server's explanation was lost.
+    const oslc = {
+      userid: 'u', password: 'p', configuration_context: null,
+      client: {
+        defaults: { headers: { common: {} } },
+        get: jest.fn(),
+        post: jest.fn(async (url) => {
+          const error = new Error('Request failed with status code 404');
+          error.response = { status: 404, headers: {}, config: { url }, data: 'Dataset not found' };
+          throw error;
+        }),
+      },
+    };
+    const ldm = new LDMClient(oslc, 'https://server.example.com/lqe');
+
+    await expect(ldm.getIncomingLinks([TARGET])).rejects.toThrow(/Dataset not found/);
   });
 
   test('stops after the first endpoint that answers', async () => {

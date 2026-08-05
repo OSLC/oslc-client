@@ -121,7 +121,7 @@ export default class LDMClient {
     // request, not a broken feature. The winner is remembered, so the probe
     // happens once per base URL rather than on every query.
     const notFound = err => err?.response?.status === 404;
-    let lastError = null;
+    let firstError = null;
 
     for (const candidate of this.#endpointCandidates()) {
       try {
@@ -134,12 +134,17 @@ export default class LDMClient {
         // Only a 404 means "not this one" — anything else is a real failure and
         // must not be masked by trying another endpoint.
         if (!notFound(err)) throw err;
-        lastError = err;
+        // Keep the FIRST failure, not the last. Candidates are ordered
+        // most-likely-first, so the first endpoint's message is the informative
+        // one — e.g. LQE explaining that a configuration "does not exist in the
+        // index", which is a real answer. Reporting the last attempt instead
+        // replaced that with the fallback endpoint's generic 404.
+        if (!firstError) firstError = err;
         this.#resolvedEndpoint = null;
       }
     }
 
-    throw lastError || new Error('No incoming-links endpoint answered');
+    throw firstError || new Error('No incoming-links endpoint answered');
   }
 
   /**
@@ -150,7 +155,13 @@ export default class LDMClient {
   #endpointCandidates() {
     if (this.#resolvedEndpoint) return [this.#resolvedEndpoint];
 
-    const lqe = [{ kind: 'lqe' }, { kind: 'lqe', dataset: 'default' }];
+    // No dataset-qualified candidate: the servlet mapping is exactly
+    // /incoming-links (confirmed against 7.1.0 SR1 — GET /lqe/incoming-links
+    // returns 500 from the servlet, GET /lqe/incoming-links/default returns a
+    // routing 404). The API doc's curl examples showing /incoming-links/default
+    // contradict its own Implementation Reference. Where a deployment does need a
+    // dataset segment, it belongs in configuration rather than a hardcoded guess.
+    const lqe = [{ kind: 'lqe' }];
     const ldm = [{ kind: 'ldm' }];
     // An /ldm base is an OSLC LDM server; anything else (including /lqe and /ldx)
     // most likely speaks the Jazz incoming-links REST API.
@@ -388,7 +399,16 @@ export default class LDMClient {
       return [];
     } catch (error) {
       const status = error?.response?.status;
-      const msg = error?.response?.data?.error || error?.message || 'Unknown error';
+      // The body is where the server explains itself. JSON responses use an
+      // `error` field, but LQE returns text/plain for some failures — reading only
+      // data.error meant those degraded to "Request failed with status code 404"
+      // and the actual reason ("Configuration ... does not exist in the index or
+      // is not a configuration") never reached the caller.
+      const data = error?.response?.data;
+      const bodyText = typeof data === 'string' ? data.trim() : data?.error;
+      const msg = bodyText
+        ? bodyText.slice(0, 500)
+        : error?.message || 'Unknown error';
       const wrapped = new Error(
         `request=POST ${endpoint} ` +
         `${status ? `status=${status} ` : ''}${msg}`
