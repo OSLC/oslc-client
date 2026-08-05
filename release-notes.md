@@ -1,3 +1,44 @@
+# 4.1.1
+
+Incoming-links fixes. Against ELM 7.1.0 SR1, `getIncomingLinks()` could not
+succeed with any `ldmBaseUrl` setting; these are the three reasons why.
+
+- `X-Jazz-CSRF-Prevent` is now added by a request interceptor on every
+  POST/PUT/DELETE/PATCH, routed through `_csrfHeaders()` so requests prefer the
+  JSESSIONID value over the `'1'` placeholder. Previously it was set per call
+  site, and `#getIncomingLinksViaLdm` never set it — so every `/discover-links`
+  POST got a 403 (CRLQE0629E). A caller-supplied value still wins.
+- Endpoint selection no longer keys off `ldmBaseUrl.includes('/lqe')`. The
+  `/incoming-links` REST API (servlet mapping `/incoming-links`, ELM 7.1.0+) is
+  served by both LQE and LDX, while `/discover-links` is the unrelated OSLC LDM
+  specification endpoint. The old test decided by URL spelling AND exclusively,
+  so an `/ldx` base was sent only to `/discover-links` (which LDX does not
+  serve) and an `/lqe` base only to `/incoming-links`. Both candidates are now
+  tried; the URL only ORDERS them, and the endpoint that answers is remembered
+  so the probe runs once per client rather than per query.
+- Auth no longer takes the blame for non-auth failures. The basic-auth and
+  interactive-SSO branches wrapped the retried request in a try/catch that
+  labelled anything it caught as that mechanism failing, then fell through to
+  `AUTH_EXHAUSTED`. A 403 CSRF therefore surfaced as "Basic auth failed", then
+  "Interactive SSO callback failed", then `AUTH_EXHAUSTED` — three misleading
+  messages, none naming the cause. New `_retryAfterAuth()`: a retry rejection
+  with a status other than 401 is definitive and is surfaced unchanged; only 401
+  or a transport error falls through to the next mechanism. JEE-forms and
+  JAS-bearer are unchanged — they own their handshakes, so attributing failure
+  to the mechanism is accurate there.
+- `LDMClient` errors preserve `error.response`, and a plain-text error body is
+  reported instead of the bare axios message. LQE returns `text/plain` for some
+  failures, so reading only `response.data.error` discarded explanations like
+  "Configuration <uri> does not exist in the index or is not a configuration".
+- When no endpoint answers, the FIRST candidate's failure is reported rather than
+  the last, so the informative message survives instead of the fallback
+  endpoint's generic 404.
+
+CONSUMER NOTE: the error-propagation change is the one behavioural difference
+that could surprise existing code. A non-auth failure on a request that
+triggered authentication (403, 404, 5xx) now propagates to the caller instead of
+being converted into an `AUTH_EXHAUSTED` rejection.
+
 # 4.1.0
 
 Write-path extensions for generic OSLC CRUD clients (Resource Navigator):
