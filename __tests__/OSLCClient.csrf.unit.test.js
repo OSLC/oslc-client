@@ -95,7 +95,8 @@ describe('Jazz CSRF header on mutating requests', () => {
 
   test('LDMClient /discover-links POST carries the header (the 403 regression)', async () => {
     const client = new OSLCClient('user', 'pass');
-    const ldm = new LDMClient(client, 'https://server.example.com/ldx');
+    // An /ldm base routes to the OSLC LDM endpoint first — the POST that 403'd.
+    const ldm = new LDMClient(client, 'https://server.example.com/ldm');
     // Turtle response so the RDF branch is the one exercised.
     const seen = captureRequests(client, () => ({
       status: 200,

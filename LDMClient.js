@@ -83,7 +83,12 @@ export default class LDMClient {
     this.client = oslcClient.client;
     this.LDMServerBaseURL = normalizeBaseUrl(ldmServerBaseUrl);
     this._warnedMissingInverseLinkTypes = new Set();
+    this.#resolvedEndpoint = null;
   }
+
+  /** The endpoint shape that last answered successfully, so the candidate probe
+   *  runs once rather than on every query. Reset when it stops working. */
+  #resolvedEndpoint = null;
 
   /**
    * Get incoming links to one or more target resources.
@@ -103,11 +108,59 @@ export default class LDMClient {
     // Use provided configurationContext or fall back to the one set in constructor
     const effectiveConfigContext = configurationContext || this.oslcClient.configuration_context;
 
-    const isLqe = this.LDMServerBaseURL.includes('/lqe');
-    if (isLqe) {
-      return this.#getIncomingLinksViaLqe(targetResourceURLs, linkTypes, effectiveConfigContext);
+    // Endpoint choice used to be `LDMServerBaseURL.includes('/lqe')`, i.e. decided
+    // by how the URL was spelled, and EXCLUSIVELY: an /ldx base was sent only to
+    // /discover-links, which LDX does not serve, so no setting could work. In
+    // fact the /incoming-links REST API is served by BOTH LQE and LDX (servlet
+    // mapping /incoming-links, ELM 7.1.0+), and its documented examples address a
+    // dataset (/incoming-links/default); /discover-links is the unrelated OSLC LDM
+    // specification endpoint.
+    //
+    // So: try every endpoint a server might offer. The URL is used only to ORDER
+    // the candidates — never to exclude one — so a mis-hinted base costs a wasted
+    // request, not a broken feature. The winner is remembered, so the probe
+    // happens once per base URL rather than on every query.
+    const notFound = err => err?.response?.status === 404;
+    let lastError = null;
+
+    for (const candidate of this.#endpointCandidates()) {
+      try {
+        const links = await this.#queryCandidate(
+          candidate, targetResourceURLs, linkTypes, effectiveConfigContext
+        );
+        this.#resolvedEndpoint = candidate;
+        return links;
+      } catch (err) {
+        // Only a 404 means "not this one" — anything else is a real failure and
+        // must not be masked by trying another endpoint.
+        if (!notFound(err)) throw err;
+        lastError = err;
+        this.#resolvedEndpoint = null;
+      }
     }
-    return this.#getIncomingLinksViaLdm(targetResourceURLs, linkTypes, effectiveConfigContext);
+
+    throw lastError || new Error('No incoming-links endpoint answered');
+  }
+
+  /**
+   * Endpoints to try, most likely first. A previously successful endpoint is
+   * returned alone. Ordering is a hint only; every candidate is reachable.
+   * @returns {Array<{kind: 'lqe'|'ldm', dataset?: string}>}
+   */
+  #endpointCandidates() {
+    if (this.#resolvedEndpoint) return [this.#resolvedEndpoint];
+
+    const lqe = [{ kind: 'lqe' }, { kind: 'lqe', dataset: 'default' }];
+    const ldm = [{ kind: 'ldm' }];
+    // An /ldm base is an OSLC LDM server; anything else (including /lqe and /ldx)
+    // most likely speaks the Jazz incoming-links REST API.
+    return /\/ldm(\/|$)/.test(this.LDMServerBaseURL) ? [...ldm, ...lqe] : [...lqe, ...ldm];
+  }
+
+  #queryCandidate(candidate, targetResourceURLs, linkTypes, configurationContext) {
+    return candidate.kind === 'ldm'
+      ? this.#getIncomingLinksViaLdm(targetResourceURLs, linkTypes, configurationContext)
+      : this.#getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext, candidate.dataset ?? null);
   }
 
   /**
@@ -243,8 +296,14 @@ export default class LDMClient {
     }
   }
 
-  async #getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext) {
-    const endpoint = `${this.LDMServerBaseURL}/incoming-links`;
+  /**
+   * Query the LQE/LDX Incoming Links REST API (ELM 7.1.0+).
+   * @param {string|null} dataset - optional dataset segment, e.g. 'default'
+   */
+  async #getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext, dataset = null) {
+    const endpoint = dataset
+      ? `${this.LDMServerBaseURL}/incoming-links/${dataset}`
+      : `${this.LDMServerBaseURL}/incoming-links`;
 
     const debugLqe = typeof process !== 'undefined' && process?.env?.DEBUG_LQE === 'true';
     if (debugLqe) {
@@ -330,10 +389,16 @@ export default class LDMClient {
     } catch (error) {
       const status = error?.response?.status;
       const msg = error?.response?.data?.error || error?.message || 'Unknown error';
-      throw new Error(
+      const wrapped = new Error(
         `request=POST ${endpoint} ` +
         `${status ? `status=${status} ` : ''}${msg}`
       );
+      // Preserve the response so callers can branch on the status. getIncomingLinks
+      // treats 404 as "this endpoint/dataset is absent, try the next candidate";
+      // without this the wrapper hid the status and every failure looked terminal.
+      if (error?.response) wrapped.response = error.response;
+      wrapped.cause = error;
+      throw wrapped;
     }
   }
 
