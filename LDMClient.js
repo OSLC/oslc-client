@@ -83,7 +83,12 @@ export default class LDMClient {
     this.client = oslcClient.client;
     this.LDMServerBaseURL = normalizeBaseUrl(ldmServerBaseUrl);
     this._warnedMissingInverseLinkTypes = new Set();
+    this.#resolvedEndpoint = null;
   }
+
+  /** The endpoint shape that last answered successfully, so the candidate probe
+   *  runs once rather than on every query. Reset when it stops working. */
+  #resolvedEndpoint = null;
 
   /**
    * Get incoming links to one or more target resources.
@@ -103,11 +108,70 @@ export default class LDMClient {
     // Use provided configurationContext or fall back to the one set in constructor
     const effectiveConfigContext = configurationContext || this.oslcClient.configuration_context;
 
-    const isLqe = this.LDMServerBaseURL.includes('/lqe');
-    if (isLqe) {
-      return this.#getIncomingLinksViaLqe(targetResourceURLs, linkTypes, effectiveConfigContext);
+    // Endpoint choice used to be `LDMServerBaseURL.includes('/lqe')`, i.e. decided
+    // by how the URL was spelled, and EXCLUSIVELY: an /ldx base was sent only to
+    // /discover-links, which LDX does not serve, so no setting could work. In
+    // fact the /incoming-links REST API is served by BOTH LQE and LDX (servlet
+    // mapping /incoming-links, ELM 7.1.0+), and its documented examples address a
+    // dataset (/incoming-links/default); /discover-links is the unrelated OSLC LDM
+    // specification endpoint.
+    //
+    // So: try every endpoint a server might offer. The URL is used only to ORDER
+    // the candidates — never to exclude one — so a mis-hinted base costs a wasted
+    // request, not a broken feature. The winner is remembered, so the probe
+    // happens once per base URL rather than on every query.
+    const notFound = err => err?.response?.status === 404;
+    let firstError = null;
+
+    for (const candidate of this.#endpointCandidates()) {
+      try {
+        const links = await this.#queryCandidate(
+          candidate, targetResourceURLs, linkTypes, effectiveConfigContext
+        );
+        this.#resolvedEndpoint = candidate;
+        return links;
+      } catch (err) {
+        // Only a 404 means "not this one" — anything else is a real failure and
+        // must not be masked by trying another endpoint.
+        if (!notFound(err)) throw err;
+        // Keep the FIRST failure, not the last. Candidates are ordered
+        // most-likely-first, so the first endpoint's message is the informative
+        // one — e.g. LQE explaining that a configuration "does not exist in the
+        // index", which is a real answer. Reporting the last attempt instead
+        // replaced that with the fallback endpoint's generic 404.
+        if (!firstError) firstError = err;
+        this.#resolvedEndpoint = null;
+      }
     }
-    return this.#getIncomingLinksViaLdm(targetResourceURLs, linkTypes, effectiveConfigContext);
+
+    throw firstError || new Error('No incoming-links endpoint answered');
+  }
+
+  /**
+   * Endpoints to try, most likely first. A previously successful endpoint is
+   * returned alone. Ordering is a hint only; every candidate is reachable.
+   * @returns {Array<{kind: 'lqe'|'ldm', dataset?: string}>}
+   */
+  #endpointCandidates() {
+    if (this.#resolvedEndpoint) return [this.#resolvedEndpoint];
+
+    // No dataset-qualified candidate: the servlet mapping is exactly
+    // /incoming-links (confirmed against 7.1.0 SR1 — GET /lqe/incoming-links
+    // returns 500 from the servlet, GET /lqe/incoming-links/default returns a
+    // routing 404). The API doc's curl examples showing /incoming-links/default
+    // contradict its own Implementation Reference. Where a deployment does need a
+    // dataset segment, it belongs in configuration rather than a hardcoded guess.
+    const lqe = [{ kind: 'lqe' }];
+    const ldm = [{ kind: 'ldm' }];
+    // An /ldm base is an OSLC LDM server; anything else (including /lqe and /ldx)
+    // most likely speaks the Jazz incoming-links REST API.
+    return /\/ldm(\/|$)/.test(this.LDMServerBaseURL) ? [...ldm, ...lqe] : [...lqe, ...ldm];
+  }
+
+  #queryCandidate(candidate, targetResourceURLs, linkTypes, configurationContext) {
+    return candidate.kind === 'ldm'
+      ? this.#getIncomingLinksViaLdm(targetResourceURLs, linkTypes, configurationContext)
+      : this.#getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext, candidate.dataset ?? null);
   }
 
   /**
@@ -243,8 +307,14 @@ export default class LDMClient {
     }
   }
 
-  async #getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext) {
-    const endpoint = `${this.LDMServerBaseURL}/incoming-links`;
+  /**
+   * Query the LQE/LDX Incoming Links REST API (ELM 7.1.0+).
+   * @param {string|null} dataset - optional dataset segment, e.g. 'default'
+   */
+  async #getIncomingLinksViaLqe(targetResourceURLs, linkTypes, configurationContext, dataset = null) {
+    const endpoint = dataset
+      ? `${this.LDMServerBaseURL}/incoming-links/${dataset}`
+      : `${this.LDMServerBaseURL}/incoming-links`;
 
     const debugLqe = typeof process !== 'undefined' && process?.env?.DEBUG_LQE === 'true';
     if (debugLqe) {
@@ -268,10 +338,12 @@ export default class LDMClient {
       params.append('oslc_config.context', asUrlString(configurationContext, 'configurationContext'));
     }
 
+    // X-Jazz-CSRF-Prevent is added by OSLCClient's request interceptor for every
+    // mutating request. Setting it here too would shadow the interceptor's value,
+    // which prefers the JSESSIONID cookie over the '1' placeholder.
     const headers = {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
-      'X-Jazz-CSRF-Prevent': '1',
     };
     if (configurationContext) {
       headers['Configuration-Context'] = asUrlString(configurationContext, 'configurationContext');
@@ -327,11 +399,26 @@ export default class LDMClient {
       return [];
     } catch (error) {
       const status = error?.response?.status;
-      const msg = error?.response?.data?.error || error?.message || 'Unknown error';
-      throw new Error(
+      // The body is where the server explains itself. JSON responses use an
+      // `error` field, but LQE returns text/plain for some failures — reading only
+      // data.error meant those degraded to "Request failed with status code 404"
+      // and the actual reason ("Configuration ... does not exist in the index or
+      // is not a configuration") never reached the caller.
+      const data = error?.response?.data;
+      const bodyText = typeof data === 'string' ? data.trim() : data?.error;
+      const msg = bodyText
+        ? bodyText.slice(0, 500)
+        : error?.message || 'Unknown error';
+      const wrapped = new Error(
         `request=POST ${endpoint} ` +
         `${status ? `status=${status} ` : ''}${msg}`
       );
+      // Preserve the response so callers can branch on the status. getIncomingLinks
+      // treats 404 as "this endpoint/dataset is absent, try the next candidate";
+      // without this the wrapper hid the status and every failure looked terminal.
+      if (error?.response) wrapped.response = error.response;
+      wrapped.cause = error;
+      throw wrapped;
     }
   }
 
