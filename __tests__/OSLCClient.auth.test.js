@@ -278,6 +278,84 @@ describe('auth dispatch', () => {
         }
     });
 
+    // A retried request can be rejected on its own merits (403 CSRF, 404, 500).
+    // Reporting those under the auth mechanism's name is actively misleading: a
+    // missing X-Jazz-CSRF-Prevent header surfaced for months as "Interactive SSO
+    // callback failed", pointing debugging at the wrong subsystem entirely.
+    describe('non-auth failure on an auth retry', () => {
+        function csrf403(config) {
+            const error = new Error('Request failed with status code 403');
+            error.response = {
+                status: 403,
+                headers: {},
+                config,
+                data: "CRLQE0629E The user has the roles required to perform this operation, but the permission has been denied because this request might have been forged by a malicous website. To prove that this request is not part of a CSRF attack add a new HTTP header with the name 'X-Jazz-CSRF-Prevent.",
+            };
+            return error;
+        }
+
+        test('Basic auth retry — surfaces the 403 instead of AUTH_EXHAUSTED', async () => {
+            const originalConfig = { url: 'https://server.example.com/ldx/discover-links', method: 'post', headers: {} };
+            const unauthorizedResponse = { status: 401, headers: {}, config: originalConfig, data: '' };
+
+            const thrown = csrf403(originalConfig);
+            client.client.request = jest.fn(async () => { throw thrown; });
+
+            await expect(client._handleAuthDispatch(unauthorizedResponse, 0)).rejects.toBe(thrown);
+            // Stops at the first definitive answer — no point offering other credentials.
+            expect(client.client.request).toHaveBeenCalledTimes(1);
+        });
+
+        test('SSO retry — surfaces the 403, and SSO is not blamed', async () => {
+            const ssoCallback = jest.fn(async () => true);
+            const ssoClient = new OSLCClient('user', 'pass', null, { ssoCallback });
+
+            const originalConfig = { url: 'https://server.example.com/ldx/discover-links', method: 'post', headers: {} };
+            const unauthorizedResponse = { status: 401, headers: {}, config: originalConfig, data: '' };
+
+            const thrown = csrf403(originalConfig);
+            // Basic auth runs first and must also surface the 403; force it past
+            // basic by marking that mechanism already attempted.
+            ssoClient.client.request = jest.fn(async () => { throw thrown; });
+
+            await expect(
+                ssoClient._handleAuthDispatch(unauthorizedResponse, 0, ['basic'])
+            ).rejects.toBe(thrown);
+
+            expect(ssoCallback).toHaveBeenCalledTimes(1);
+        });
+
+        test('a 401 on the retry still falls through to the next mechanism', async () => {
+            const originalConfig = { url: 'https://server.example.com/rm/resources/1', method: 'get', headers: {} };
+            const unauthorizedResponse = { status: 401, headers: {}, config: originalConfig, data: '' };
+
+            const authError = new Error('Request failed with status code 401');
+            authError.response = { status: 401, headers: {}, config: originalConfig, data: '' };
+            client.client.request = jest.fn(async () => { throw authError; });
+
+            // 401 is not definitive — normal exhaustion behaviour is preserved.
+            await expect(client._handleAuthDispatch(unauthorizedResponse, 0))
+                .rejects.toMatchObject({ code: 'AUTH_EXHAUSTED' });
+        });
+
+        test('an SSO callback failure is still reported as an SSO failure', async () => {
+            const ssoCallback = jest.fn(async () => { throw new Error('popup blocked'); });
+            const ssoClient = new OSLCClient('user', 'pass', null, { ssoCallback });
+
+            const originalConfig = { url: 'https://server.example.com/rm/resources/1', method: 'get', headers: {} };
+            const unauthorizedResponse = { status: 401, headers: {}, config: originalConfig, data: '' };
+            ssoClient.client.request = jest.fn();
+
+            await expect(
+                ssoClient._handleAuthDispatch(unauthorizedResponse, 0, ['basic'])
+            ).rejects.toMatchObject({ code: 'AUTH_EXHAUSTED' });
+
+            expect(ssoCallback).toHaveBeenCalledTimes(1);
+            // The callback threw before any retry, so no request was made.
+            expect(ssoClient.client.request).not.toHaveBeenCalled();
+        });
+    });
+
     test('SSO detection — dispatches on 3xx redirect to IdP URL', async () => {
         const originalConfig = { url: 'https://server.example.com/rm/resources/1', method: 'get', headers: {} };
         const redirectResponse = {

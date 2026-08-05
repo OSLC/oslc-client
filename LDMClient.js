@@ -268,10 +268,12 @@ export default class LDMClient {
       params.append('oslc_config.context', asUrlString(configurationContext, 'configurationContext'));
     }
 
+    // X-Jazz-CSRF-Prevent is added by OSLCClient's request interceptor for every
+    // mutating request. Setting it here too would shadow the interceptor's value,
+    // which prefers the JSESSIONID cookie over the '1' placeholder.
     const headers = {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
-      'X-Jazz-CSRF-Prevent': '1',
     };
     if (configurationContext) {
       headers['Configuration-Context'] = asUrlString(configurationContext, 'configurationContext');

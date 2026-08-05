@@ -218,6 +218,32 @@ export default class OSLCClient {
             this.client.defaults.headers.common['Configuration-Context'] = configuration_context;
         }
 
+        // Request interceptor for Jazz CSRF protection. Jazz rejects mutating
+        // requests that lack X-Jazz-CSRF-Prevent with CRLQE0629E / HTTP 403.
+        //
+        // Applied here rather than per call site because per-call-site was the
+        // bug: LDMClient's /discover-links POST never set the header and got a
+        // 403 on every incoming-links query, while its sibling /incoming-links
+        // POST hardcoded '1'. An interceptor cannot be forgotten by a new caller,
+        // and it routes every request through _csrfHeaders, which prefers the
+        // JSESSIONID value over the '1' placeholder when a cookie jar is present.
+        //
+        // A value the caller set explicitly wins (rewrite=false).
+        this.client.interceptors.request.use(config => {
+            const method = (config.method || 'get').toLowerCase();
+            if (method === 'post' || method === 'put' || method === 'delete' || method === 'patch') {
+                const csrf = this._csrfHeaders(config.url);
+                for (const [name, value] of Object.entries(csrf)) {
+                    if (typeof config.headers?.set === 'function') {
+                        config.headers.set(name, value, false);
+                    } else {
+                        config.headers = { [name]: value, ...(config.headers || {}) };
+                    }
+                }
+            }
+            return config;
+        });
+
         // Response interceptor for handling auth challenges.
         // Requests marked with _oslcAuthHandled have already been through auth
         // dispatch (they are retries from the auth handlers) — pass them through.
@@ -329,18 +355,16 @@ export default class OSLCClient {
         // 4. Basic auth fallback (plain 401 or authrequired that failed JEE)
         if ((status === 401 || authMsg === 'authrequired') && !attempted.includes('basic')) {
             attempted.push('basic');
-            try {
-                originalRequest.auth = {
-                    username: this.userid,
-                    password: this.password,
-                };
-                originalRequest._oslcAuthHandled = true;
-                const retryResponse = await this.client.request(originalRequest);
+            originalRequest.auth = {
+                username: this.userid,
+                password: this.password,
+            };
+            originalRequest._oslcAuthHandled = true;
+            const retryResponse = await this._retryAfterAuth(originalRequest, 'Basic auth');
+            if (retryResponse) {
                 return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-            } catch (error) {
-                    oslcClientLogHttpError('Basic auth failed', error);
-                    // Fall through — let exhausted rejection handle it
-                }
+            }
+            // Fall through — let exhausted rejection handle it
         }
 
         // 5. Interactive SSO callback as last resort — when all automated methods
@@ -348,20 +372,25 @@ export default class OSLCClient {
         // authenticate interactively via browser window.
         if ((status === 401 || authMsg === 'authrequired') && this.ssoCallback && !attempted.includes('sso-interactive')) {
             attempted.push('sso-interactive');
+            // The callback and the retry are reported separately: only the former
+            // is an SSO problem. Conflating them is what made a 403 CSRF on the
+            // retried request read as "Interactive SSO callback failed".
+            let callbackResult = null;
             try {
-                const resourceUrl = originalRequest.url;
-                const callbackResult = await this.ssoCallback(resourceUrl);
-                if (callbackResult) {
-                    if (isNodeEnvironment && CookieJar && callbackResult instanceof CookieJar) {
-                        this.jar = callbackResult;
-                    }
-                    originalRequest._oslcAuthHandled = true;
-                    delete originalRequest.auth; // Remove failed Basic auth
-                    const retryResponse = await this.client.request(originalRequest);
-                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
-                }
+                callbackResult = await this.ssoCallback(originalRequest.url);
             } catch (ssoError) {
                 oslcClientLogHttpError('Interactive SSO callback failed', ssoError);
+            }
+            if (callbackResult) {
+                if (isNodeEnvironment && CookieJar && callbackResult instanceof CookieJar) {
+                    this.jar = callbackResult;
+                }
+                originalRequest._oslcAuthHandled = true;
+                delete originalRequest.auth; // Remove failed Basic auth
+                const retryResponse = await this._retryAfterAuth(originalRequest, 'Request after interactive SSO');
+                if (retryResponse) {
+                    return this._handleAuthDispatch(retryResponse, cycle + 1, attempted);
+                }
             }
         }
 
@@ -636,6 +665,37 @@ export default class OSLCClient {
      * @param {string[]} attempted - Array of auth method names that were tried
      * @returns {Promise<never>} Rejected promise with structured error
      */
+    /**
+     * Retry the original request after an auth mechanism has done its work.
+     *
+     * A failure here is NOT necessarily a failure of that mechanism. The retried
+     * request can be rejected on its own merits — 403 CSRF, 404, 500 — and
+     * offering different credentials cannot help. Those are surfaced to the
+     * caller unchanged; only a 401 (or a transport error with no response) is
+     * treated as "this mechanism did not work, try the next one".
+     *
+     * Reporting non-auth failures under the mechanism's name is what hid a
+     * missing X-Jazz-CSRF-Prevent header behind "Interactive SSO callback
+     * failed" and an AUTH_EXHAUSTED rejection.
+     *
+     * @param {Object} originalRequest - axios config to retry
+     * @param {string} mechanism - label for logging when the retry is inconclusive
+     * @returns {Promise<Object|null>} the response, or null to fall through
+     * @throws the underlying error when it is a definitive non-auth rejection
+     */
+    async _retryAfterAuth(originalRequest, mechanism) {
+        try {
+            return await this.client.request(originalRequest);
+        } catch (error) {
+            const retryStatus = error?.response?.status;
+            if (retryStatus && retryStatus !== 401) {
+                throw error;
+            }
+            oslcClientLogHttpError(`${mechanism} failed`, error);
+            return null;
+        }
+    }
+
     _createAuthExhaustedRejection(response, attempted) {
         const error = new Error('Authentication exhausted — all methods failed');
         error.code = 'AUTH_EXHAUSTED';
