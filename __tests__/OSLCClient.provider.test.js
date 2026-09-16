@@ -2,7 +2,14 @@ import { jest } from '@jest/globals';
 import OSLCClient from '../OSLCClient.js';
 import LDMClient from '../LDMClient.js';
 
-/** Run a client's request interceptors over a config, as axios would. */
+/**
+ * Run a client's request interceptors over a config, in REGISTRATION order.
+ *
+ * Not the order axios uses: axios composes request interceptors LIFO, so it would run these
+ * back to front. It makes no difference to what these tests assert — the CSRF and provider
+ * interceptors touch different headers — but the real ordering is only ever exercised by
+ * OSLCClient.provider.integration.test.js, which drives a socket through axios itself.
+ */
 async function runRequestInterceptors(client, config) {
   let result = config;
   for (const handler of client.client.interceptors.request.handlers) {
@@ -218,6 +225,10 @@ describe('LDMClient', () => {
 
     const config = await runRequestInterceptors(client, {
       url: 'https://lqe.example.com/incoming-links/default', method: 'post', headers: {},
+      // The real LDM call site passes { auth: requestAuth, headers } (LDMClient.js), and on the
+      // Node http adapter config.auth clobbers the header we just set. Asserting against a
+      // config that never had an `auth` key would pass with the `delete` removed.
+      auth: { username: 'u', password: 'p' },
     });
     expect(config.headers['Authorization']).toBe('Bearer shared');
     expect(config.auth).toBeUndefined();

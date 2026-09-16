@@ -62,15 +62,18 @@ import OSLCClient from 'oslc-client';
 
 Creates a client instance. An axios HTTP client is configured internally with cookie jar support (Node.js) or `withCredentials` (browser). If `configurationContext` is provided, a `Configuration-Context` header is sent with every request.
 
-### Host-supplied credentials
+#### Host-supplied credentials
 
 Servers that accept only bearer tokens — anything behind an OAuth 2.0 issuer — cannot be read
 with a username and password. Supply the credential yourself:
 
 ```javascript
-const client = new OSLCClient(null, null, configContext, {
+const client = new OSLCClient(user, password, configContext, {
   getAuthorization: async ({ url, forceRefresh }) => {
-    // Return a complete header value, or null to use the built-in mechanisms for this URL.
+    // Inspect the URL: one axios instance reaches more than one host, and returning a
+    // credential for a host it does not belong to is worse than returning none.
+    if (!url.startsWith('https://oauth-protected.example.com/')) return null;
+    // A complete header value, or null to use the built-in mechanisms for this URL.
     return `Bearer ${await myTokenStore.get({ forceRefresh })}`;
   }
 });
@@ -237,13 +240,15 @@ const linkDialog = serviceProvider
 ## Error Handling
 
 ```js
-import { OSLCError, PreconditionFailedError, ConflictError } from 'oslc-client';
+import { OSLCError, PreconditionFailedError, ConflictError, CredentialRejectedError } from 'oslc-client';
 ```
 
 Write methods on `OSLCClient` (`putResource`, `createResource`, `deleteResource`) throw typed errors from `errors.js` on failure instead of raw axios rejections. `OSLCError` is the base class, carrying `status`, `statusText`, `serverMessage` (the response body, if any), and `url`. Two subclasses map to specific HTTP statuses that write-path callers commonly need to branch on:
 
 - `PreconditionFailedError` — HTTP 412, an `If-Match` ETag mismatch (someone else updated the resource since it was read).
 - `ConflictError` — HTTP 409, typically a semantic conflict the server rejects (e.g. configuration or state conflict).
+
+`CredentialRejectedError` is the fourth subclass and the one a [host-supplied credential](#host-supplied-credentials) consumer must catch. It is raised on any request — not only writes — when the server refuses the credential your `getAuthorization` provider supplied, after exactly one forced refresh, or when the provider itself throws (with the provider's error as `cause`). It carries `status`, `url` and `wwwAuthenticate`, and it is raised in place of, never in addition to, a fallback to the built-in mechanisms. Treat it as "this identity must authenticate again", which is what distinguishes it from the opaque `AUTH_EXHAUSTED` rejection the built-in ladder produces.
 
 ```js
 import { PreconditionFailedError, ConflictError } from 'oslc-client';
@@ -264,13 +269,17 @@ try {
 
 ## Authentication
 
-The client handles authentication transparently via an axios response interceptor. Three mechanisms are supported, tried in order when a server issues a challenge:
+The client handles authentication transparently via an axios response interceptor. Three built-in mechanisms use the user id and password given to the constructor, tried in order when a server issues a challenge:
 
 1. **JEE Form authentication** -- triggered by the `x-com-ibm-team-repository-web-auth-msg: authrequired` header. The client POSTs credentials to `j_security_check`.
-2. **JAS Bearer token** -- triggered by a `WWW-Authenticate: jauth realm` header containing a `token_uri`. The client obtains a bearer token and retries the request.
+2. **JAS Bearer token** -- triggered by a `WWW-Authenticate: jauth realm` header containing a `token_uri`. The client exchanges the credentials for a bearer token and retries the request. The token is cached per token URI and re-fetched only when the server rejects it; concurrent fetches for one token URI are coalesced into a single request, so the credential is not submitted once per parallel request.
 3. **HTTP Basic authentication** -- fallback for any `401` response. The client retries with an `Authorization: Basic` header.
 
-No additional configuration is needed; provide your credentials to the constructor and authentication is handled automatically.
+Two SSO paths complete the ladder: a redirect to a known identity provider is followed programmatically on Node, and `options.ssoCallback` is offered the request URL as a last resort so the host can authenticate the user interactively.
+
+No additional configuration is needed for these; provide your credentials to the constructor and authentication is handled automatically.
+
+Servers that accept only a bearer token -- anything behind an OAuth 2.0 issuer -- have no username and password to give, so the credential comes from the host instead, through the `getAuthorization` option: see [Host-supplied credentials](#host-supplied-credentials). When your provider supplies a header for a request, every mechanism above stands down for that request and a rejected credential raises `CredentialRejectedError` rather than falling back to Basic.
 
 ## RDF Handling
 

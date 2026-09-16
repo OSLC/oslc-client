@@ -171,9 +171,23 @@ export default class OSLCClient {
      * @param {string} user - Username for authentication
      * @param {string} password - Password for authentication
      * @param {string|null} [configuration_context=null] - OSLC Configuration-Context URI
-     * @param {Object} [options={}]
+     * @param {Object} [options={}] - Every option must be given HERE. The package ships no
+     *   .d.ts, so this block is the only in-editor signal that these exist — and the provider
+     *   interceptor is registered conditionally in this constructor, so assigning
+     *   `client._getAuthorization` afterwards silently does nothing.
      * @param {import('tough-cookie').CookieJar} [options.cookieJar] - Shared CookieJar (Node.js only). If provided, used instead of creating a private jar.
      * @param {Function} [options.ssoCallback] - Async callback for interactive SSO authentication: (idpUrl: string) => CookieJar | boolean | null
+     * @param {string} [options.ldmBaseUrl] - Base URL of the LQE or LDX server that serves the
+     *   link index, used by getIncomingLinks(). Omit it and incoming links are read from the
+     *   OSLC server itself.
+     * @param {Function} [options.getAuthorization] - Host-supplied credential provider:
+     *   async ({ url, forceRefresh }) => string | null. Returns a COMPLETE Authorization header
+     *   value (e.g. `Bearer …`) for servers that accept only a token, or null to leave that
+     *   request to the built-in mechanisms — one axios instance reaches more than one host, so
+     *   inspect `url`. Called before every request; the library caches nothing, so memoize in
+     *   the provider and make it single-flight. When it supplies a header, the built-in ladder
+     *   stands down for that request and a rejected credential raises CredentialRejectedError
+     *   after exactly one `forceRefresh` retry — it never falls back to Basic or ssoCallback.
      */
     constructor(user, password, configuration_context = null, options = {}) {
         this.userid = user;
