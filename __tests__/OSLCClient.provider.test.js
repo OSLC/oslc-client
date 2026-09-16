@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import OSLCClient from '../OSLCClient.js';
 
 /** Run a client's request interceptors over a config, as axios would. */
@@ -61,5 +62,40 @@ describe('getAuthorization provider', () => {
     await runRequestInterceptors(client, { url: 'https://a.example/r', method: 'get', headers: {} });
 
     expect(seen).toEqual([{ url: 'https://a.example/r', forceRefresh: false }]);
+  });
+});
+
+describe('dispatch stand-down', () => {
+  function unauthorized(config) {
+    return { status: 401, headers: { 'www-authenticate': 'Bearer' }, config };
+  }
+
+  it('does not run Basic or ssoCallback when the provider authenticated the request', async () => {
+    const ssoCallback = jest.fn();
+    const client = new OSLCClient('u', 'p', null, {
+      getAuthorization: async () => 'Bearer abc123',
+      ssoCallback,
+    });
+    client._retryAfterAuth = jest.fn();
+
+    await client._handleAuthDispatch(
+      unauthorized({ url: 'https://example.com/r', _oslcProviderAuth: true }), 0
+    ).catch(() => {});
+
+    expect(ssoCallback).not.toHaveBeenCalled();
+    expect(client._retryAfterAuth).not.toHaveBeenCalledWith(
+      expect.anything(), 'Basic auth'
+    );
+  });
+
+  it('still runs the existing ladder when the provider did not authenticate the request', async () => {
+    const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => null });
+    client._retryAfterAuth = jest.fn().mockResolvedValue(null);
+
+    await client._handleAuthDispatch(
+      unauthorized({ url: 'https://example.com/r' }), 0
+    ).catch(() => {});
+
+    expect(client._retryAfterAuth).toHaveBeenCalledWith(expect.anything(), 'Basic auth');
   });
 });

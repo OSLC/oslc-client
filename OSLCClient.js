@@ -323,6 +323,13 @@ export default class OSLCClient {
         const status = response?.status;
         const location = headers['location'];
 
+        // A request the provider authenticated does not go through the built-in ladder. Its
+        // credential came from the host, so replaying userid/password would both fail and
+        // destroy the header the provider set.
+        if (originalRequest?._oslcProviderAuth) {
+            return this._handleProviderRejection(response, originalRequest);
+        }
+
         // 1. JEE Forms auth challenge
         if (authMsg === 'authrequired' && !attempted.includes('jee-forms')) {
             attempted.push('jee-forms');
@@ -731,6 +738,13 @@ export default class OSLCClient {
         error.ssoDetected = attempted.includes('sso');
         error.url = response?.config?.url;
         return Promise.reject(error);
+    }
+
+    /**
+     * A provider-authenticated request came back 401. Task 4 gives this its refresh behaviour.
+     */
+    async _handleProviderRejection(response, originalRequest) {
+        return response;
     }
 
     /**
