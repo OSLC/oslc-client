@@ -7,7 +7,7 @@ import Compact from './Compact.js';
 import RootServices from './RootServices.js';
 import ServiceProviderCatalog from './ServiceProviderCatalog.js';
 import ServiceProvider from './ServiceProvider.js';
-import { OSLCError, oslcErrorFrom } from './errors.js';
+import { OSLCError, oslcErrorFrom, CredentialRejectedError } from './errors.js';
 
 // Conditional imports for Node.js only — loaded lazily to avoid top-level await
 // which prevents browser bundlers (esbuild/webpack) from processing this module.
@@ -741,10 +741,34 @@ export default class OSLCClient {
     }
 
     /**
-     * A provider-authenticated request came back 401. Task 4 gives this its refresh behaviour.
+     * A provider-authenticated request came back 401.
+     *
+     * Budget: exactly one forced refresh. Setting _oslcForceRefresh makes the provider
+     * interceptor ask the host for a new credential rather than its cached one; a second 401,
+     * or a request that already carried a refreshed credential, is terminal.
      */
     async _handleProviderRejection(response, originalRequest) {
-        return response;
+        // _handleAuthDispatch runs on every response, so only a 401 means the credential was
+        // refused. Without this a successful 200 would be re-issued, and a 403 CSRF would be
+        // misreported as a credential rejection.
+        if (response?.status !== 401) return response;
+
+        const wwwAuthenticate = response?.headers?.['www-authenticate'] ?? null;
+
+        if (!originalRequest._oslcForceRefresh) {
+            const retryRequest = {
+                ...originalRequest,
+                _oslcForceRefresh: true,
+                _oslcAuthHandled: true,
+            };
+            const retryResponse = await this._retryAfterAuth(retryRequest, 'Host-supplied credential');
+            if (retryResponse) return retryResponse;
+        }
+
+        throw new CredentialRejectedError(
+            `Credential rejected by the server (401): ${originalRequest.url}`,
+            { status: 401, url: originalRequest.url ?? null, wwwAuthenticate }
+        );
     }
 
     /**

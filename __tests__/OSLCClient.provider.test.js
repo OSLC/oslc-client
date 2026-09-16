@@ -99,3 +99,75 @@ describe('dispatch stand-down', () => {
     expect(client._retryAfterAuth).toHaveBeenCalledWith(expect.anything(), 'Basic auth');
   });
 });
+
+describe('provider refresh', () => {
+  function unauthorized(config) {
+    return {
+      status: 401,
+      headers: { 'www-authenticate': 'Bearer realm="JSA"' },
+      config,
+    };
+  }
+
+  it('asks the provider once for a fresh credential and retries once', async () => {
+    const calls = [];
+    const client = new OSLCClient('u', 'p', null, {
+      getAuthorization: async ({ forceRefresh }) => { calls.push(forceRefresh); return 'Bearer t'; },
+    });
+    client._retryAfterAuth = jest.fn().mockResolvedValue({ status: 200, config: {} });
+
+    const result = await client._handleAuthDispatch(
+      unauthorized({ url: 'https://example.com/r', _oslcProviderAuth: true }), 0
+    );
+
+    expect(result.status).toBe(200);
+    const retried = client._retryAfterAuth.mock.calls[0][0];
+    expect(retried._oslcForceRefresh).toBe(true);
+    expect(retried._oslcAuthHandled).toBe(true);
+  });
+
+  it('raises CredentialRejectedError when the refreshed credential is rejected too', async () => {
+    const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => 'Bearer t' });
+    client._retryAfterAuth = jest.fn().mockResolvedValue(null);
+
+    await expect(client._handleAuthDispatch(
+      unauthorized({ url: 'https://example.com/r', _oslcProviderAuth: true }), 0
+    )).rejects.toMatchObject({
+      name: 'CredentialRejectedError',
+      status: 401,
+      url: 'https://example.com/r',
+      wwwAuthenticate: 'Bearer realm="JSA"',
+    });
+  });
+
+  it('does not retry a request that already used a refreshed credential', async () => {
+    const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => 'Bearer t' });
+    client._retryAfterAuth = jest.fn();
+
+    await expect(client._handleAuthDispatch(
+      unauthorized({ url: 'https://example.com/r', _oslcProviderAuth: true, _oslcForceRefresh: true }), 0
+    )).rejects.toMatchObject({ name: 'CredentialRejectedError' });
+
+    expect(client._retryAfterAuth).not.toHaveBeenCalled();
+  });
+
+  it('passes a successful response through without retrying', async () => {
+    const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => 'Bearer t' });
+    client._retryAfterAuth = jest.fn();
+
+    const ok = { status: 200, headers: {}, config: { url: 'https://example.com/r', _oslcProviderAuth: true } };
+
+    await expect(client._handleAuthDispatch(ok, 0)).resolves.toBe(ok);
+    expect(client._retryAfterAuth).not.toHaveBeenCalled();
+  });
+
+  it('passes a non-401 failure through unchanged, so a 403 is not misreported as a credential rejection', async () => {
+    const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => 'Bearer t' });
+    client._retryAfterAuth = jest.fn();
+
+    const forbidden = { status: 403, headers: {}, config: { url: 'https://example.com/r', _oslcProviderAuth: true } };
+
+    await expect(client._handleAuthDispatch(forbidden, 0)).resolves.toBe(forbidden);
+    expect(client._retryAfterAuth).not.toHaveBeenCalled();
+  });
+});
