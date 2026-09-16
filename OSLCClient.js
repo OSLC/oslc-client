@@ -762,7 +762,10 @@ export default class OSLCClient {
                 _oslcAuthHandled: true,
             };
             const retryResponse = await this._retryAfterAuth(retryRequest, 'Host-supplied credential');
-            if (retryResponse) return retryResponse;
+            // A truthy response is not proof of success: 401 resolves rather than rejects
+            // (validateStatus), and the retry carries _oslcAuthHandled so the interceptor
+            // hands it straight back. Only a non-401 retry means the new credential worked.
+            if (retryResponse && retryResponse.status !== 401) return retryResponse;
         }
 
         throw new CredentialRejectedError(

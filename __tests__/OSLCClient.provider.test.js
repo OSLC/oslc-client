@@ -126,7 +126,7 @@ describe('provider refresh', () => {
     expect(retried._oslcAuthHandled).toBe(true);
   });
 
-  it('raises CredentialRejectedError when the refreshed credential is rejected too', async () => {
+  it('raises CredentialRejectedError when the retry transport-fails (_retryAfterAuth resolves null)', async () => {
     const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => 'Bearer t' });
     client._retryAfterAuth = jest.fn().mockResolvedValue(null);
 
@@ -138,6 +138,22 @@ describe('provider refresh', () => {
       url: 'https://example.com/r',
       wwwAuthenticate: 'Bearer realm="JSA"',
     });
+  });
+
+  it('raises CredentialRejectedError when the retried request is refused again', async () => {
+    const client = new OSLCClient('u', 'p', null, { getAuthorization: async () => 'Bearer t' });
+    // The real _retryAfterAuth RESOLVES a 401: validateStatus treats 401 as success, and the
+    // retry carries _oslcAuthHandled so the interceptor passes it through. Mocking null here
+    // would assert against a shape this method never returns for a repeated rejection.
+    client._retryAfterAuth = jest.fn().mockResolvedValue({
+      status: 401,
+      headers: { 'www-authenticate': 'Bearer realm="JSA"' },
+      config: {},
+    });
+
+    await expect(client._handleAuthDispatch(
+      unauthorized({ url: 'https://example.com/r', _oslcProviderAuth: true }), 0
+    )).rejects.toMatchObject({ name: 'CredentialRejectedError', status: 401 });
   });
 
   it('does not retry a request that already used a refreshed credential', async () => {
