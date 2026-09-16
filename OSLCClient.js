@@ -181,6 +181,7 @@ export default class OSLCClient {
         this.configuration_context = configuration_context;
         this.ssoCallback = options.ssoCallback ?? null;
         this._ldmBaseUrl = options.ldmBaseUrl || null;
+        this._getAuthorization = options.getAuthorization ?? null;
         this.rootservices = null;
         this.spc = null;
         this.sp = null;
@@ -243,6 +244,32 @@ export default class OSLCClient {
             }
             return config;
         });
+
+        // Host-supplied credentials. Called before every request rather than in response to a
+        // challenge: servers protected by a bearer token answer with an opaque 401 that
+        // carries no usable signal, so the scheme is configured by the host, never negotiated.
+        //
+        // The library caches nothing — the host memoizes, because only the host knows the
+        // credential's lifetime and how to renew it.
+        if (this._getAuthorization) {
+            this.client.interceptors.request.use(async config => {
+                const header = await this._getAuthorization({
+                    url: config.url,
+                    forceRefresh: !!config._oslcForceRefresh,
+                });
+                if (!header) return config;   // no credential for this URL — ladder runs as before
+
+                if (typeof config.headers?.set === 'function') config.headers.set('Authorization', header);
+                else config.headers = { ...(config.headers || {}), Authorization: header };
+
+                // axios applies config.auth AFTER request interceptors and would overwrite the
+                // header we just set. Cleared only when we supplied one, so the Basic path
+                // still works for requests the provider declined.
+                delete config.auth;
+                config._oslcProviderAuth = true;
+                return config;
+            });
+        }
 
         // Response interceptor for handling auth challenges.
         // Requests marked with _oslcAuthHandled have already been through auth
