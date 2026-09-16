@@ -187,3 +187,20 @@ describe('provider refresh', () => {
     expect(client._retryAfterAuth).not.toHaveBeenCalled();
   });
 });
+
+describe('provider failure', () => {
+  it('surfaces a provider error as CredentialRejectedError rather than falling back to Basic', async () => {
+    const cause = new Error('user cancelled the login');
+    const client = new OSLCClient('u', 'p', null, {
+      getAuthorization: async () => { throw cause; },
+    });
+
+    await expect(runRequestInterceptors(client, {
+      url: 'https://example.com/r', method: 'get', headers: {},
+    })).rejects.toMatchObject({
+      name: 'CredentialRejectedError',
+      url: 'https://example.com/r',
+      cause,
+    });
+  });
+});

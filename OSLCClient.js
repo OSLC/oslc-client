@@ -253,10 +253,21 @@ export default class OSLCClient {
         // credential's lifetime and how to renew it.
         if (this._getAuthorization) {
             this.client.interceptors.request.use(async config => {
-                const header = await this._getAuthorization({
-                    url: config.url,
-                    forceRefresh: !!config._oslcForceRefresh,
-                });
+                let header;
+                try {
+                    header = await this._getAuthorization({
+                        url: config.url,
+                        forceRefresh: !!config._oslcForceRefresh,
+                    });
+                } catch (providerError) {
+                    // Deliberately not a fallback. Falling through to Basic is what turned
+                    // "your token expired" into AUTH_EXHAUSTED and a browser popup opened at
+                    // the resource URL.
+                    throw new CredentialRejectedError(
+                        `Credential provider failed: ${config.url}`,
+                        { url: config.url ?? null, cause: providerError }
+                    );
+                }
                 if (!header) return config;   // no credential for this URL — ladder runs as before
 
                 if (typeof config.headers?.set === 'function') config.headers.set('Authorization', header);
