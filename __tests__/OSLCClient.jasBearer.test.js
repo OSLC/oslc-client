@@ -62,4 +62,43 @@ describe('JAS bearer auth', () => {
     expect(client._jasBearerTokens.get(TOKEN_URI)).toBe('TOKEN-1');
     expect(client._jasBearerTokens.get(other)).toBe('TOKEN-OTHER');
   });
+  // Caching alone leaves the fan-out the release note claims to have fixed: N parallel
+  // requests that all 401 at once all miss the empty cache and all POST the password.
+  it('coalesces concurrent fetches into a single password submission', async () => {
+    let releasePost;
+    client.client.post = jest.fn(() => new Promise(resolve => {
+      releasePost = () => resolve({ data: 'TOKEN-1' });
+    }));
+
+    const inFlight = [0, 1, 2, 3, 4].map(i => client._handleAuthDispatch(
+      jauthChallenge({ url: `https://jazz.example.com/rm/${i}`, headers: {} }), 0
+    ));
+
+    releasePost();
+    const results = await Promise.all(inFlight);
+
+    expect(client.client.post).toHaveBeenCalledTimes(1);
+    expect(results.every(r => r.status === 200)).toBe(true);
+    expect(client.client.request.mock.calls.every(
+      ([config]) => config.headers['Authorization'] === 'Bearer TOKEN-1'
+    )).toBe(true);
+  });
+
+  it('clears the in-flight entry when a fetch fails, so the next attempt is not poisoned', async () => {
+    client.client.post = jest.fn()
+      .mockRejectedValueOnce(new Error('token endpoint down'))
+      .mockResolvedValueOnce({ data: 'TOKEN-1' });
+
+    await expect(client._handleAuthDispatch(
+      jauthChallenge({ url: 'https://jazz.example.com/rm/a', headers: {} }), 0
+    )).rejects.toThrow('token endpoint down');
+
+    const result = await client._handleAuthDispatch(
+      jauthChallenge({ url: 'https://jazz.example.com/rm/a', headers: {} }), 0
+    );
+
+    expect(result.status).toBe(200);
+    expect(client.client.post).toHaveBeenCalledTimes(2);
+    expect(client._jasBearerTokenFetches.size).toBe(0);
+  });
 });

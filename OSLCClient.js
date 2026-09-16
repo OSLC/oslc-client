@@ -190,6 +190,16 @@ export default class OSLCClient {
          * wire each time.
          */
         this._jasBearerTokens = new Map();
+        /**
+         * In-flight token fetches, keyed by token URI — the library's own single-flight, the
+         * same constraint the design puts on host providers.
+         *
+         * Caching alone does not fix the fan-out: N parallel requests that all 401 at once all
+         * miss the empty cache and all POST the password concurrently. That happens on every
+         * client's first burst and after every invalidation. The first caller starts the POST;
+         * the rest await it.
+         */
+        this._jasBearerTokenFetches = new Map();
         this.rootservices = null;
         this.spc = null;
         this.sp = null;
@@ -529,20 +539,7 @@ export default class OSLCClient {
         let token = this._jasBearerTokens.get(tokenUri);
 
         if (!token || refetched) {
-            const tokenResponse = await this.client.post(tokenUri,
-                new URLSearchParams({
-                    username: this.userid,
-                    password: this.password,
-                }).toString(),
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Accept': 'text/plain',
-                    },
-                }
-            );
-            token = tokenResponse.data;
-            this._jasBearerTokens.set(tokenUri, token);
+            token = await this._fetchJasBearerToken(tokenUri);
         }
 
         originalRequest.headers['Authorization'] = `Bearer ${token}`;
@@ -555,6 +552,48 @@ export default class OSLCClient {
             return this._handleJasBearerAuth(originalRequest, tokenUri, true);
         }
         return response;
+    }
+
+    /**
+     * POST the user's credentials to a JAS token endpoint, at most once at a time per URI.
+     *
+     * Concurrent callers join the in-flight fetch rather than starting their own — without
+     * this, a client expanding a column fires one password submission per parallel request.
+     * The entry is cleared on settle either way, so a failed fetch does not poison the next
+     * attempt.
+     *
+     * @param {string} tokenUri - The token endpoint URI
+     * @returns {Promise<string>} the bearer token
+     */
+    _fetchJasBearerToken(tokenUri) {
+        const inFlight = this._jasBearerTokenFetches.get(tokenUri);
+        if (inFlight) return inFlight;
+
+        const fetched = (async () => {
+            const tokenResponse = await this.client.post(tokenUri,
+                new URLSearchParams({
+                    username: this.userid,
+                    password: this.password,
+                }).toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'text/plain',
+                    },
+                }
+            );
+            this._jasBearerTokens.set(tokenUri, tokenResponse.data);
+            return tokenResponse.data;
+        })();
+
+        const tracked = fetched.finally(() => {
+            // Guard the delete: a later fetch may already own the slot.
+            if (this._jasBearerTokenFetches.get(tokenUri) === tracked) {
+                this._jasBearerTokenFetches.delete(tokenUri);
+            }
+        });
+        this._jasBearerTokenFetches.set(tokenUri, tracked);
+        return tracked;
     }
 
     /**
