@@ -62,6 +62,33 @@ import OSLCClient from 'oslc-client';
 
 Creates a client instance. An axios HTTP client is configured internally with cookie jar support (Node.js) or `withCredentials` (browser). If `configurationContext` is provided, a `Configuration-Context` header is sent with every request.
 
+### Host-supplied credentials
+
+Servers that accept only bearer tokens — anything behind an OAuth 2.0 issuer — cannot be read
+with a username and password. Supply the credential yourself:
+
+```javascript
+const client = new OSLCClient(null, null, configContext, {
+  getAuthorization: async ({ url, forceRefresh }) => {
+    // Return a complete header value, or null to use the built-in mechanisms for this URL.
+    return `Bearer ${await myTokenStore.get({ forceRefresh })}`;
+  }
+});
+```
+
+The provider is called before every request. **oslc-client caches nothing** — memoize in your
+provider, because only you know the credential's lifetime.
+
+**Your provider must be single-flight.** Callers commonly issue requests in parallel; without
+coalescing, one expired credential makes every in-flight request call your provider with
+`forceRefresh: true` at once. Start the refresh on the first call and have concurrent callers
+await the same promise.
+
+Returning `null` leaves that request to the built-in mechanisms, exactly as before — so a
+provider may decline for URLs it has no credential for, such as a different host the same client
+reaches. A rejected credential raises `CredentialRejectedError` (carrying `status`, `url` and
+`wwwAuthenticate`) after exactly one forced refresh — it never falls back to Basic.
+
 #### `client.use(serverUrl, serviceProviderName, domain?)`
 
 Connects to an OSLC server, reads its `rootservices` document, discovers the `ServiceProviderCatalog` for the given domain (`'CM'`, `'RM'`, or `'QM'`; defaults to `'CM'`), and selects the named service provider. Must be called before `createResource`, `queryResources`, or `query`.

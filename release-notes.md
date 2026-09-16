@@ -1,3 +1,14 @@
+## 4.2.0
+
+- **`options.getAuthorization`** — supply an `Authorization` header from the host, for servers
+  that accept only bearer tokens. Called before every request; return `null` to use the
+  existing mechanisms for that URL. The library caches nothing; providers must be single-flight.
+- **`CredentialRejectedError`** — raised when a host-supplied credential is rejected, after one
+  forced refresh, or when the provider itself throws. Never falls back to Basic auth, which
+  previously turned an expired token into an opaque `AUTH_EXHAUSTED`.
+- A request the provider authenticated now has `config.auth` cleared, so axios cannot overwrite
+  the supplied header with Basic credentials.
+
 # 4.1.1
 
 Incoming-links fixes. Against ELM 7.1.0 SR1, `getIncomingLinks()` could not
