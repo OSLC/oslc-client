@@ -33,6 +33,21 @@ export class ConflictError extends OSLCError {
 }
 
 /**
+ * The host supplied a credential and the server rejected it.
+ *
+ * Distinct from AUTH_EXHAUSTED, which means "none of the built-in mechanisms worked".
+ * This means "the credential you gave me is not accepted", which is what a host needs in
+ * order to prompt for a new one rather than retry blindly.
+ */
+export class CredentialRejectedError extends OSLCError {
+  constructor(message, { wwwAuthenticate = null, ...options } = {}) {
+    super(message, options);
+    this.name = 'CredentialRejectedError';
+    this.wwwAuthenticate = wwwAuthenticate;
+  }
+}
+
+/**
  * Build the appropriate OSLCError subclass from an axios rejection or a
  * resolved response object.
  *

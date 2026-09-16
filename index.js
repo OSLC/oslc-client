@@ -22,7 +22,7 @@
 export { default as OSLCClient } from './OSLCClient.js';
 export { default } from './OSLCClient.js';
 export { default as LDMClient } from './LDMClient.js';
-export { OSLCError, PreconditionFailedError, ConflictError, oslcErrorFrom } from './errors.js';
+export { OSLCError, PreconditionFailedError, ConflictError, CredentialRejectedError, oslcErrorFrom } from './errors.js';
 export { default as OSLCResource } from './OSLCResource.js';
 export { default as ServiceProvider } from './ServiceProvider.js';
 export { default as Compact } from './Compact.js';
