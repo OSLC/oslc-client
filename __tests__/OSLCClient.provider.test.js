@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import OSLCClient from '../OSLCClient.js';
+import LDMClient from '../LDMClient.js';
 
 /** Run a client's request interceptors over a config, as axios would. */
 async function runRequestInterceptors(client, config) {
@@ -202,5 +203,23 @@ describe('provider failure', () => {
       url: 'https://example.com/r',
       cause,
     });
+  });
+});
+
+describe('LDMClient', () => {
+  it('shares the axios instance, so incoming-links requests carry the provider header', async () => {
+    const client = new OSLCClient('u', 'p', null, {
+      getAuthorization: async () => 'Bearer shared',
+      ldmBaseUrl: 'https://lqe.example.com',
+    });
+    const ldm = new LDMClient(client, 'https://lqe.example.com');
+
+    expect(ldm.client).toBe(client.client);
+
+    const config = await runRequestInterceptors(client, {
+      url: 'https://lqe.example.com/incoming-links/default', method: 'post', headers: {},
+    });
+    expect(config.headers['Authorization']).toBe('Bearer shared');
+    expect(config.auth).toBeUndefined();
   });
 });
