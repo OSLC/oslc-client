@@ -1,3 +1,10 @@
+## 4.3.0
+
+- **JAS bearer authentication no longer replays the user's password on every request.** The
+  token is cached per token URI and re-fetched only when the server rejects it. Previously each
+  request cost three round trips and re-submitted the credential; a client fetching resources in
+  parallel sent dozens of password submissions per interaction.
+
 ## 4.2.0
 
 - **`options.getAuthorization`** — supply an `Authorization` header from the host, for servers

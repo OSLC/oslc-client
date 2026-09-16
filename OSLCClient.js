@@ -182,6 +182,14 @@ export default class OSLCClient {
         this.ssoCallback = options.ssoCallback ?? null;
         this._ldmBaseUrl = options.ldmBaseUrl || null;
         this._getAuthorization = options.getAuthorization ?? null;
+        /**
+         * JAS bearer tokens, keyed by token URI.
+         *
+         * Without this, every request re-POSTs the user's password to the token endpoint and
+         * throws the token away — three round trips per request, with the credential on the
+         * wire each time.
+         */
+        this._jasBearerTokens = new Map();
         this.rootservices = null;
         this.spc = null;
         this.sp = null;
@@ -490,27 +498,46 @@ export default class OSLCClient {
 
     /**
      * Handle JAS Bearer authentication.
+     *
+     * The token endpoint answers text/plain with no expires_in, so there is no expiry to cache
+     * against. The policy is therefore: use a cached token if we have one, and on rejection
+     * fetch exactly once more. `refetched` bounds that to one retry per request.
+     *
      * @param {Object} originalRequest - The original axios request config
      * @param {string} tokenUri - The token endpoint URI from the www-authenticate header
+     * @param {boolean} [refetched=false] - True when the cached token was already rejected
      * @returns {Promise<Object>} Response from retrying the original request
      */
-    async _handleJasBearerAuth(originalRequest, tokenUri) {
-        const tokenResponse = await this.client.post(tokenUri,
-            new URLSearchParams({
-                username: this.userid,
-                password: this.password,
-            }).toString(),
-            {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'text/plain',
-                },
-            }
-        );
-        const newToken = tokenResponse.data;
-        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+    async _handleJasBearerAuth(originalRequest, tokenUri, refetched = false) {
+        let token = this._jasBearerTokens.get(tokenUri);
+
+        if (!token || refetched) {
+            const tokenResponse = await this.client.post(tokenUri,
+                new URLSearchParams({
+                    username: this.userid,
+                    password: this.password,
+                }).toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'text/plain',
+                    },
+                }
+            );
+            token = tokenResponse.data;
+            this._jasBearerTokens.set(tokenUri, token);
+        }
+
+        originalRequest.headers['Authorization'] = `Bearer ${token}`;
         originalRequest._oslcAuthHandled = true;
-        return await this.client.request(originalRequest);
+        const response = await this.client.request(originalRequest);
+
+        // A cached token the server refuses is stale: discard it and fetch once more.
+        if (response?.status === 401 && !refetched) {
+            this._jasBearerTokens.delete(tokenUri);
+            return this._handleJasBearerAuth(originalRequest, tokenUri, true);
+        }
+        return response;
     }
 
     /**
