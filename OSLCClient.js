@@ -436,6 +436,10 @@ export default class OSLCClient {
             } else {
                 // Non-IdP redirect — follow it manually (normal redirect behavior)
                 const redirectConfig = { ...originalRequest, url: absoluteLocation, _oslcAuthHandled: false };
+                // A forced refresh belongs to the one request that was challenged. Carrying it
+                // onto every subsequent hop would make the host re-issue a credential per hop,
+                // and would spend the next hop's refresh budget before it is challenged.
+                delete redirectConfig._oslcForceRefresh;
                 // Avoid re-sending POST body on redirect (302/303 → GET)
                 if (status === 302 || status === 303) {
                     redirectConfig.method = 'get';
@@ -927,7 +931,7 @@ export default class OSLCClient {
         }
 
         const reason = status === 401
-            ? `Credential rejected by the server (401)`
+            ? 'Credential rejected by the server (401)'
             : `Server challenged for credentials the host-supplied credential does not satisfy (${status})`;
         throw new CredentialRejectedError(
             `${reason}: ${originalRequest.url}`,
