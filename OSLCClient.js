@@ -276,7 +276,19 @@ export default class OSLCClient {
                         { url: config.url ?? null, cause: providerError }
                     );
                 }
-                if (!header) return config;   // no credential for this URL — ladder runs as before
+                if (!header) {
+                    // No credential for this URL — the ladder runs as before. But a redirect
+                    // config is cloned from the previous hop, so it can arrive already carrying
+                    // that hop's Authorization and provider mark. The provider declined for
+                    // THIS url, so the previous host's credential must not travel to it, and
+                    // the ladder must not stand down for a request nothing authenticated.
+                    if (config._oslcProviderAuth) {
+                        if (typeof config.headers?.delete === 'function') config.headers.delete('Authorization');
+                        else if (config.headers) delete config.headers.Authorization;
+                        delete config._oslcProviderAuth;
+                    }
+                    return config;
+                }
 
                 if (typeof config.headers?.set === 'function') config.headers.set('Authorization', header);
                 else config.headers = { ...(config.headers || {}), Authorization: header };
@@ -345,8 +357,13 @@ export default class OSLCClient {
         // A request the provider authenticated does not go through the built-in ladder. Its
         // credential came from the host, so replaying userid/password would both fail and
         // destroy the header the provider set.
-        if (originalRequest?._oslcProviderAuth) {
-            return this._handleProviderRejection(response, originalRequest);
+        //
+        // Only for auth-shaped responses, though. Branch 3 is not an authentication mechanism:
+        // with maxRedirects: 0 it is this library's ONLY redirect-following path. Standing down
+        // in front of it returned the 302 itself to the caller, and getResource — which throws
+        // only at status >= 400 — then read a redirect as if it were the resource.
+        if (originalRequest?._oslcProviderAuth && this._isProviderAuthChallenge(response)) {
+            return this._handleProviderRejection(response, originalRequest, cycle);
         }
 
         // 1. JEE Forms auth challenge
@@ -779,19 +796,62 @@ export default class OSLCClient {
     }
 
     /**
-     * A provider-authenticated request came back 401.
+     * Is this response a challenge for credentials rather than an answer?
+     *
+     * Three shapes count, and they are the same three the built-in ladder itself treats as
+     * challenges:
+     *
+     *  - a 401;
+     *  - ELM's JEE-forms challenge, which arrives on a NON-401 response carrying
+     *    x-com-ibm-team-repository-web-auth-msg: authrequired and a login page as its body —
+     *    which is why branch 1 fires regardless of status and branch 4 ORs the two conditions;
+     *  - a redirect to a known IdP, which is how an SSO challenge appears.
+     *
+     * Everything else — a 200, a 403, an ordinary redirect — is a real answer and must reach
+     * the code that handles it.
+     *
+     * @param {Object} response - Axios response object
+     * @returns {boolean}
+     */
+    _isProviderAuthChallenge(response) {
+        const headers = response?.headers || {};
+        const status = response?.status;
+
+        if (status === 401) return true;
+        if (headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') return true;
+
+        const location = headers['location'];
+        if (status >= 300 && status < 400 && location) {
+            try {
+                return isIdpUrl(new URL(location, response?.config?.url).toString());
+            } catch {
+                return false;   // a Location we cannot resolve is not evidence of an IdP
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A provider-authenticated request was challenged for credentials.
      *
      * Budget: exactly one forced refresh. Setting _oslcForceRefresh makes the provider
-     * interceptor ask the host for a new credential rather than its cached one; a second 401,
-     * or a request that already carried a refreshed credential, is terminal.
+     * interceptor ask the host for a new credential rather than its cached one; a second
+     * challenge, or a request that already carried a refreshed credential, is terminal.
+     *
+     * Terminal means CredentialRejectedError — never a fallback to JEE forms, Basic or
+     * ssoCallback, and never handing the challenge back as though it were the resource. A JEE
+     * login page returned as a 200 would otherwise be parsed as RDF.
+     *
+     * @param {Object} response - the challenging response
+     * @param {Object} originalRequest - its axios config
+     * @param {number} [cycle=0] - dispatch cycle, so a redirect on the refreshed retry is
+     *                             still bounded by MAX_AUTH_DISPATCH_CYCLES
      */
-    async _handleProviderRejection(response, originalRequest) {
-        // _handleAuthDispatch runs on every response, so only a 401 means the credential was
-        // refused. Without this a successful 200 would be re-issued, and a 403 CSRF would be
-        // misreported as a credential rejection.
-        if (response?.status !== 401) return response;
-
+    async _handleProviderRejection(response, originalRequest, cycle = 0) {
         const wwwAuthenticate = response?.headers?.['www-authenticate'] ?? null;
+        // The status the server actually sent. A JEE-forms challenge is not a 401, and
+        // reporting it as one would be a lie to the consumer branching on it.
+        const status = typeof response?.status === 'number' ? response.status : 401;
 
         if (!originalRequest._oslcForceRefresh) {
             const retryRequest = {
@@ -800,15 +860,25 @@ export default class OSLCClient {
                 _oslcAuthHandled: true,
             };
             const retryResponse = await this._retryAfterAuth(retryRequest, 'Host-supplied credential');
-            // A truthy response is not proof of success: 401 resolves rather than rejects
-            // (validateStatus), and the retry carries _oslcAuthHandled so the interceptor
-            // hands it straight back. Only a non-401 retry means the new credential worked.
-            if (retryResponse && retryResponse.status !== 401) return retryResponse;
+            // A truthy response is not proof of success: a challenge resolves rather than
+            // rejects (401 passes validateStatus, and a JEE-forms challenge is a 200), and the
+            // retry carries _oslcAuthHandled so the interceptor hands it straight back.
+            if (retryResponse && !this._isProviderAuthChallenge(retryResponse)) {
+                // _oslcAuthHandled also kept the retry out of dispatch, so a redirect on the
+                // refreshed request has not been followed yet. Hand it back to dispatch.
+                if (retryResponse.status >= 300 && retryResponse.status < 400 && retryResponse.headers?.location) {
+                    return this._handleAuthDispatch(retryResponse, cycle + 1);
+                }
+                return retryResponse;
+            }
         }
 
+        const reason = status === 401
+            ? `Credential rejected by the server (401)`
+            : `Server challenged for credentials the host-supplied credential does not satisfy (${status})`;
         throw new CredentialRejectedError(
-            `Credential rejected by the server (401): ${originalRequest.url}`,
-            { status: 401, url: originalRequest.url ?? null, wwwAuthenticate }
+            `${reason}: ${originalRequest.url}`,
+            { status, url: originalRequest.url ?? null, wwwAuthenticate }
         );
     }
 
