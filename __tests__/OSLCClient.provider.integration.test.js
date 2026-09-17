@@ -140,6 +140,36 @@ describe('provider-authenticated requests are not cut off from the rest of dispa
     expect(ctx.seen.map(r => r.authorization)).toEqual(['Bearer T', 'Bearer T']);
   });
 
+  // The other half of branch 3, and the reason the stand-down cannot simply be "follow every
+  // redirect": a 3xx whose Location resolves to a known IdP is an SSO challenge wearing a
+  // redirect's clothes. Followed, it reaches _handleSsoAuth, which replays userid/password or
+  // calls ssoCallback — the fallback the seam exists to prevent. '/oauth2/authorize' is one of
+  // the library's IDP_PATTERNS; the case above, '/final', is not.
+  it('raises CredentialRejectedError on a redirect to an IdP, and never calls ssoCallback', async () => {
+    const ctx = await serve((req, res) => {
+      res.writeHead(302, { Location: '/oauth2/authorize?client_id=elm&response_type=code' });
+      res.end();
+    });
+
+    let ssoCallbackCalls = 0;
+    const client = new OSLCClient('u', 'p', null, {
+      getAuthorization: async () => 'Bearer T',
+      ssoCallback: async () => { ssoCallbackCalls += 1; return null; },
+    });
+
+    await expect(client.client.get(ctx.url('/r'))).rejects.toMatchObject({
+      name: 'CredentialRejectedError',
+      // The status the server actually sent — a 302, not a 401.
+      status: 302,
+      url: ctx.url('/r'),
+    });
+
+    expect(ssoCallbackCalls).toBe(0);
+    // One forced refresh and nothing more: the IdP URL itself was never fetched.
+    expect(ctx.seen.map(r => r.path)).toEqual(['/r', '/r']);
+    expect(ctx.seen.every(r => r.authorization === 'Bearer T')).toBe(true);
+  });
+
   // ELM's JEE-forms challenge is not a 401: it is a 200 carrying the auth-msg header and a
   // login page as its body. Returned to the caller it would be parsed as RDF.
   it('raises CredentialRejectedError on a JEE-forms challenge instead of returning the login page', async () => {

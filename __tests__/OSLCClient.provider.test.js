@@ -106,6 +106,39 @@ describe('dispatch stand-down', () => {
 
     expect(client._retryAfterAuth).toHaveBeenCalledWith(expect.anything(), 'Basic auth');
   });
+
+  // Branch 2 of dispatch fires on `jauth realm` at ANY status, so a provider-authenticated
+  // response carrying that header on a 200 used to reach _handleJasBearerAuth — which
+  // overwrites the host's Authorization header and POSTs the user's username/password to the
+  // token endpoint. That is the fallback the seam exists to prevent.
+  it('raises CredentialRejectedError on a jauth challenge at a non-401 status, without entering JAS bearer auth', async () => {
+    const jauth = 'jauth realm="x", token_uri="https://example.com/oidc/token"';
+    const client = new OSLCClient('u', 'p', null, {
+      getAuthorization: async () => 'Bearer T',
+    });
+    // Mocked, not merely spied: if the fix regresses, the real handler would POST the
+    // password to a live host rather than fail the assertion.
+    const jasBearer = jest.spyOn(client, '_handleJasBearerAuth')
+      .mockResolvedValue({ status: 200, headers: {}, config: {} });
+    // The forced-refresh retry is refused the same way, which is what makes this terminal.
+    client._retryAfterAuth = jest.fn().mockResolvedValue({
+      status: 200, headers: { 'www-authenticate': jauth }, config: {},
+    });
+
+    await expect(client._handleAuthDispatch({
+      status: 200,
+      headers: { 'www-authenticate': jauth },
+      config: { url: 'https://example.com/r', _oslcProviderAuth: true },
+    }, 0)).rejects.toMatchObject({
+      name: 'CredentialRejectedError',
+      // The status the server actually sent, not a 401 invented for the report.
+      status: 200,
+      url: 'https://example.com/r',
+      wwwAuthenticate: jauth,
+    });
+
+    expect(jasBearer).not.toHaveBeenCalled();
+  });
 });
 
 describe('provider refresh', () => {

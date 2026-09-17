@@ -855,17 +855,21 @@ export default class OSLCClient {
     /**
      * Is this response a challenge for credentials rather than an answer?
      *
-     * Three shapes count, and they are the same three the built-in ladder itself treats as
+     * Four shapes count, and they are the same four the built-in ladder itself treats as
      * challenges:
      *
      *  - a 401;
      *  - ELM's JEE-forms challenge, which arrives on a NON-401 response carrying
      *    x-com-ibm-team-repository-web-auth-msg: authrequired and a login page as its body —
      *    which is why branch 1 fires regardless of status and branch 4 ORs the two conditions;
+     *  - a JAS bearer challenge, WWW-Authenticate: jauth realm="...", which branch 2 likewise
+     *    fires on at any status — so it too must be matched without regard to status, or a
+     *    jauth challenge on a non-401 would reach _handleJasBearerAuth and POST the user's
+     *    password to the token endpoint, overwriting the credential the host supplied;
      *  - a redirect to a known IdP, which is how an SSO challenge appears.
      *
-     * Everything else — a 200, a 403, an ordinary redirect — is a real answer and must reach
-     * the code that handles it.
+     * Everything else — a plain 200, a 403, a redirect that is not to an IdP — is a real
+     * answer and must reach the code that handles it.
      *
      * @param {Object} response - Axios response object
      * @returns {boolean}
@@ -876,6 +880,9 @@ export default class OSLCClient {
 
         if (status === 401) return true;
         if (headers['x-com-ibm-team-repository-web-auth-msg'] === 'authrequired') return true;
+        // Branch 2 matches this header at any status, so the stand-down must match it the
+        // same way, or the shapes it covers would not be the shapes the ladder acts on.
+        if (headers['www-authenticate']?.includes('jauth realm')) return true;
 
         const location = headers['location'];
         if (status >= 300 && status < 400 && location) {
@@ -901,8 +908,13 @@ export default class OSLCClient {
      *
      * @param {Object} response - the challenging response
      * @param {Object} originalRequest - its axios config
-     * @param {number} [cycle=0] - dispatch cycle, so a redirect on the refreshed retry is
-     *                             still bounded by MAX_AUTH_DISPATCH_CYCLES
+     * @param {number} [cycle=0] - dispatch cycle, carried into the re-dispatch of a redirect on
+     *                             the refreshed retry so this chain keeps counting rather than
+     *                             restarting at 0. It does NOT bound the redirect chain: branch
+     *                             3 of dispatch returns this.client.request(redirectConfig),
+     *                             and that response re-enters the response interceptor at cycle
+     *                             0, so every hop gets a fresh MAX_AUTH_DISPATCH_CYCLES budget.
+     *                             TODO: bound redirect chains — pre-existing since 4.1.1.
      */
     async _handleProviderRejection(response, originalRequest, cycle = 0) {
         const wwwAuthenticate = response?.headers?.['www-authenticate'] ?? null;
