@@ -1,0 +1,35 @@
+# What ships to npm.
+#
+# Without this file npm falls back to .gitignore, which is written for a
+# different question: .gitignore lists what must not be COMMITTED, and
+# everything else is then published by default. That default is how 4.2.0
+# came to ship __tests__/, .idea/, .vscode/, .github/ and
+# .claude/settings.local.json — 44 files and 282 kB unpacked, for a library
+# whose entire runtime is ten top-level .js files.
+#
+# Consumers need the module graph reachable from index.js, nothing more:
+#   index.js -> OSLCClient.js, LDMClient.js, OSLCResource.js, Compact.js,
+#               RootServices.js, ServiceProvider.js, ServiceProviderCatalog.js,
+#               errors.js, namespaces.js
+# README.md, LICENSE.txt and package.json are always included by npm and
+# cannot be excluded here. examples/ and release-notes.md are kept
+# deliberately: they are documentation a consumer reads, and they are small.
+#
+# Verify a change to this file with `npm pack --dry-run` BEFORE publishing —
+# it lists the exact tarball contents without uploading anything.
+
+# Tests and their output. The largest single win: __tests__ alone is ~118 kB.
+__tests__/
+coverage/
+
+# Editor and IDE state — machine-local, meaningless to a consumer.
+.idea/
+.vscode/
+
+# Agent tooling. .claude/settings.local.json is a local permission
+# allowlist; it has no business on a public registry.
+.claude/
+.superpowers/
+
+# CI configuration — it runs on GitHub, it does not run for consumers.
+.github/
