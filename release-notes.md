@@ -1,5 +1,20 @@
-# 4.3.0
+# 4.2.0
 
+- **`options.getAuthorization`** — supply an `Authorization` header from the host, for servers
+  that accept only bearer tokens. Called before every request; return `null` to use the
+  existing mechanisms for that URL. The library caches nothing; providers must be single-flight.
+- **`CredentialRejectedError`** — raised when a host-supplied credential is rejected, after one
+  forced refresh, or when the provider itself throws. Never falls back to Basic auth, which
+  previously turned an expired token into an opaque `AUTH_EXHAUSTED`. It carries the status the
+  server actually sent, which is not always a 401: ELM's JEE-forms challenge arrives on a 200,
+  a JAS bearer challenge (`WWW-Authenticate: jauth realm=...`) can arrive on any status, and an
+  SSO challenge arrives as a redirect to a known identity provider. All four shapes raise the
+  error rather than replaying the user's password or invoking `ssoCallback`.
+- The built-in auth ladder stands down only for those auth-shaped responses. An ordinary
+  redirect on a provider-authenticated request is still followed, with the provider consulted
+  again for the new URL — so a credential does not travel to a host the provider declined.
+- A request the provider authenticated now has `config.auth` cleared, so axios cannot overwrite
+  the supplied header with Basic credentials.
 - **JAS bearer authentication no longer replays the user's password on every request.** The
   token is cached per token URI and re-fetched only when the server rejects it, and concurrent
   fetches for one token URI are coalesced into a single POST. Previously every request POSTed
@@ -9,17 +24,6 @@
   The token is still obtained in response to a challenge rather than attached pre-emptively, so
   a request to a JAS-protected server still costs a 401 and a retry. What changed is the token
   fetch between them, which is now skipped whenever a usable token is already held.
-
-# 4.2.0
-
-- **`options.getAuthorization`** — supply an `Authorization` header from the host, for servers
-  that accept only bearer tokens. Called before every request; return `null` to use the
-  existing mechanisms for that URL. The library caches nothing; providers must be single-flight.
-- **`CredentialRejectedError`** — raised when a host-supplied credential is rejected, after one
-  forced refresh, or when the provider itself throws. Never falls back to Basic auth, which
-  previously turned an expired token into an opaque `AUTH_EXHAUSTED`.
-- A request the provider authenticated now has `config.auth` cleared, so axios cannot overwrite
-  the supplied header with Basic credentials.
 
 # 4.1.1
 
