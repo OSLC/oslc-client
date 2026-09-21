@@ -1,3 +1,23 @@
+# 4.2.1
+
+Two content-negotiation bug fixes. No API change.
+
+- **`DOMParser.parseFromString` was called with no media type**, so any `text/xml` or
+  `application/xml` response threw `the provided mimeType "undefined" is not valid` instead of
+  being read. The media type is now passed.
+- **RDF/XML served as `application/xml` is now read as RDF** — but only when the call negotiated
+  an RDF type. `application/xml` is a supertype of `application/rdf+xml`, so a caller that asked
+  for RDF and received the supertype meant RDF; a caller that asked for `application/xml` still
+  gets an XML document. The body is never sniffed: that would override the server's declaration
+  for every caller, including one that genuinely wants XML. If the RDF parse yields no triples,
+  the XML reading is used rather than returning an empty graph that looks like a resource with
+  no properties.
+
+  This matters for providers that mislabel RDF: Rhapsody Systems Engineering serves its OSLC
+  resource shapes as `application/xml` while the payload is `<rdf:RDF>`. Before this fix a
+  consumer got no shape properties at all, which presents as a server with no discoverable
+  types rather than as a content-type problem.
+
 # 4.2.0
 
 - **`options.getAuthorization`** — supply an `Authorization` header from the host, for servers
