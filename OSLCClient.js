@@ -1026,34 +1026,50 @@ export default class OSLCClient {
         const etag = response.headers.etag;
         const contentType = response.headers['content-type'];
         
-        // This only handles the headers that are used in the OSLC spec.
+        // `application/xml` is ambiguous. Jazz process documents really are plain
+        // XML; some providers serve RDF/XML under it -- Rhapsody Systems
+        // Engineering labels its OSLC resource shapes `application/xml` while
+        // the payload is `<rdf:RDF>`.
         //
-        // `application/xml` is ambiguous: Jazz process documents really are
-        // plain XML, but some providers serve RDF/XML under it -- Rhapsody
-        // Systems Engineering labels its OSLC resource shapes `application/xml`
-        // while the payload is `<rdf:RDF>`. Deciding on the media type alone
-        // sent those shapes to the DOM branch, so discovery got no shape
-        // properties and the server contributed no typed tools. Sniff the root
-        // element instead, and only DOM-parse what is not RDF.
-        const looksLikeRdfXml = typeof response.data === 'string'
-            && /<(?:[A-Za-z_][\w.-]*:)?RDF[\s>]/.test(response.data.slice(0, 2048));
-        if ((contentType.includes('text/xml') || contentType.includes('application/xml'))
-            && !looksLikeRdfXml) {
-            // The media type is required; omitting it throws
-            // `the provided mimeType "undefined" is not valid`.
-            const xmlType = contentType.includes('text/xml') ? 'text/xml' : 'application/xml';
+        // Resolve the ambiguity with what THIS CALL asked for, never by
+        // sniffing the body. Sniffing overrides the server's declaration for
+        // every caller, including one that genuinely wants XML and could be
+        // handed a graph instead. Content negotiation already carries the
+        // answer: `application/xml` is a supertype of `application/rdf+xml`, so
+        // a caller that negotiated RDF and got the supertype meant RDF. A
+        // caller that asked for XML gets XML, exactly as before.
+        const requestedRdf = /application\/rdf\+xml|text\/turtle|application\/ld\+json|application\/n-triples/
+            .test(accept || '');
+        const genericXml = contentType.includes('text/xml') || contentType.includes('application/xml');
+        // The media type is required; omitting it throws
+        // `the provided mimeType "undefined" is not valid`.
+        const xmlType = contentType.includes('text/xml') ? 'text/xml' : 'application/xml';
+
+        if (genericXml && !requestedRdf) {
             return { etag, xml: new DOMParser().parseFromString(response.data, xmlType) };
-        } else if (contentType.includes('application/atom+xml')) {
+        }
+        if (genericXml) {
+            const graph = $rdf.graph();
+            try {
+                $rdf.parse(response.data, graph, url, 'application/rdf+xml');
+            } catch (err) {
+                // Not RDF after all -- fall through to the XML reading rather
+                // than hand back an empty graph that looks like a resource
+                // with no properties.
+            }
+            if (graph.statements.length > 0) {
+                return new OSLCResource(url, graph, etag);
+            }
+            return { etag, xml: new DOMParser().parseFromString(response.data, xmlType) };
+        }
+        if (contentType.includes('application/atom+xml')) {
             return { etag, feed: response.data };
         } else {
             // assume the content-type is some RDF representation
             // Create a new graph for this resource
             const graph = $rdf.graph();
             try {
-                // Normalise: $rdf.parse needs an RDF media type, and a
-                // provider may have labelled RDF/XML as application/xml.
-                const rdfType = looksLikeRdfXml ? 'application/rdf+xml' : contentType;
-                $rdf.parse(response.data, graph, url, rdfType)
+                $rdf.parse(response.data, graph, url, contentType)
             } catch (err) {
                 console.error(err)
             }                        
