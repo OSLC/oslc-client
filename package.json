@@ -17,7 +17,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OSLC/oslc-client.git"
+    "url": "git+https://github.com/OSLC/oslc-client.git"
   },
   "homepage": "https://open-services.net/",
   "keywords": [
