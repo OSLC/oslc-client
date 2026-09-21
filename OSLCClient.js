@@ -1026,9 +1026,23 @@ export default class OSLCClient {
         const etag = response.headers.etag;
         const contentType = response.headers['content-type'];
         
-        // This only handles the headers that are used in the OSLC spec
-        if (contentType.includes('text/xml') || contentType.includes('application/xml')) {
-            return { etag, xml: new DOMParser().parseFromString(response.data) };
+        // This only handles the headers that are used in the OSLC spec.
+        //
+        // `application/xml` is ambiguous: Jazz process documents really are
+        // plain XML, but some providers serve RDF/XML under it -- Rhapsody
+        // Systems Engineering labels its OSLC resource shapes `application/xml`
+        // while the payload is `<rdf:RDF>`. Deciding on the media type alone
+        // sent those shapes to the DOM branch, so discovery got no shape
+        // properties and the server contributed no typed tools. Sniff the root
+        // element instead, and only DOM-parse what is not RDF.
+        const looksLikeRdfXml = typeof response.data === 'string'
+            && /<(?:[A-Za-z_][\w.-]*:)?RDF[\s>]/.test(response.data.slice(0, 2048));
+        if ((contentType.includes('text/xml') || contentType.includes('application/xml'))
+            && !looksLikeRdfXml) {
+            // The media type is required; omitting it throws
+            // `the provided mimeType "undefined" is not valid`.
+            const xmlType = contentType.includes('text/xml') ? 'text/xml' : 'application/xml';
+            return { etag, xml: new DOMParser().parseFromString(response.data, xmlType) };
         } else if (contentType.includes('application/atom+xml')) {
             return { etag, feed: response.data };
         } else {
@@ -1036,7 +1050,10 @@ export default class OSLCClient {
             // Create a new graph for this resource
             const graph = $rdf.graph();
             try {
-                $rdf.parse(response.data, graph, url, contentType)
+                // Normalise: $rdf.parse needs an RDF media type, and a
+                // provider may have labelled RDF/XML as application/xml.
+                const rdfType = looksLikeRdfXml ? 'application/rdf+xml' : contentType;
+                $rdf.parse(response.data, graph, url, rdfType)
             } catch (err) {
                 console.error(err)
             }                        
