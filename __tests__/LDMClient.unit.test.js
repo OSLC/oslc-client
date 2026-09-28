@@ -225,21 +225,28 @@ describe('INVERSE_LINK_TYPES coverage for CM -> AM links', () => {
     expect([...INVERSE_LINK_TYPES.keys()]).toContain(REL_ARCH);
   });
 
-  it('maps it to itself, since OSLC declares no inverse term for it', () => {
-    expect(INVERSE_LINK_TYPES.get(REL_ARCH)).toBe(REL_ARCH);
+  it('names the reverse the way the CM -> QM links do', () => {
+    // The four cm#relatedTest* types invert to qm#relatedChangeRequest; this is the same shape
+    // of relationship pointing at an architecture resource. The value names a direction for
+    // display and is never asserted -- see the note in LDMClient.js.
+    expect(INVERSE_LINK_TYPES.get(REL_ARCH)).toBe('http://open-services.net/ns/am#relatedChangeRequest');
   });
 
   /**
-   * An inverse that is not itself a key is never queried, so incoming links in that
-   * direction are invisible -- the same blind spot relatedArchitectureElement had.
-   * Two such orphans exist today and are recorded rather than fixed silently, since
-   * adding them changes what every client asks LQE for. This guards against a third
-   * appearing unnoticed.
+   * Some values are not themselves keys, and that is correct: they name a reverse
+   * direction that is never *stored*, so querying for it would find nothing by
+   * construction. rm#validatedBy and qm#relatedChangeRequest are labels for the far
+   * end of a link ETM stores as qm#validatesRequirement / cm#relatedTest*, and
+   * am#relatedChangeRequest is the same for cm#relatedArchitectureElement.
+   *
+   * Pinned so that a genuinely stored predicate is not added as a value alone, which
+   * would leave it unqueried.
    */
-  it('has only the two known orphan inverses, so no new blind spot creeps in', () => {
+  it('lists exactly the reverse-only names, none of which are stored predicates', () => {
     const keys = new Set(INVERSE_LINK_TYPES.keys());
     const orphans = [...new Set([...INVERSE_LINK_TYPES.values()])].filter((v) => !keys.has(v)).sort();
     expect(orphans).toEqual([
+      'http://open-services.net/ns/am#relatedChangeRequest',
       'http://open-services.net/ns/qm#relatedChangeRequest',
       'http://open-services.net/ns/rm#validatedBy',
     ]);

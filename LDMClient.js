@@ -50,26 +50,25 @@ export const INVERSE_LINK_TYPES = new Map([
   ['http://jazz.net/ns/rm/navigation#parent', 'http://jazz.net/ns/rm/navigation#children'],
   ['http://jazz.net/ns/rm/navigation#children', 'http://jazz.net/ns/rm/navigation#parent'],
 
-  // CM -> AM. The only link type EWM offers to an architecture resource, and the
-  // one a change request uses to point at anything in an AM domain -- including a
-  // business motivation or an assessment resource, since those servers declare
-  // oslc_am: as a domain.
+  // CM -> AM, following the CM -> QM pattern above: the four cm#relatedTest* link types all
+  // invert to qm#relatedChangeRequest, and this is the same shape of relationship reaching an
+  // architecture resource instead of a test one.
   //
-  // This table is also the set of link types queried: discoverIncomingLinks sends
-  // [...INVERSE_LINK_TYPES.keys()] as `linkType`, and LQE answers "what points here
-  // VIA THIS PREDICATE". So a predicate missing from this table is never asked
-  // about, and its incoming links are invisible -- an empty answer indistinguishable
-  // from "nothing links here". Measured 2026-09-28: LQE held two change requests
-  // pointing at a BMM Objective and returned them immediately once asked with this
-  // predicate; the client had never asked.
+  // This map is also the set of link types queried: discoverIncomingLinks sends
+  // [...INVERSE_LINK_TYPES.keys()] as `linkType`, and LQE answers "what points here VIA THIS
+  // PREDICATE". A predicate missing from the keys is never asked about, and its incoming links
+  // come back as an empty result indistinguishable from "nothing links here". Measured
+  // 2026-09-28: LQE already held two EWM change requests pointing at a BMM Objective and
+  // returned both the moment it was asked with cm#relatedArchitectureElement; the client had
+  // never asked.
   //
-  // Mapped to itself, as oslc:related is. OSLC declares no inverse term for it: the
-  // predicate lives in the CM namespace while its range is an AM resource, so there
-  // is no `am:elaborates` to point at and inventing one would be worse than the
-  // asymmetry. EWM's own shape labels the reverse direction "Elaborates"; a client
-  // that wants that wording should take it from oslc:inversePropertyLabel where a
-  // server publishes it.
-  ['http://open-services.net/ns/cm#relatedArchitectureElement', 'http://open-services.net/ns/cm#relatedArchitectureElement']
+  // The VALUE names the reverse direction for display. It is NOT a property anyone declares or
+  // stores: OSLC AM declares no properties at all (only LinkType and Resource), and adding a
+  // real am#relatedChangeRequest would create a redundant backlink -- a second stored assertion
+  // for a relationship already recorded once on the change request, which is exactly what link
+  // discovery exists to make unnecessary. ETM does declare oslc_qm:relatedChangeRequest; that is
+  // the thing not to copy. Nothing ever asserts this URI.
+  ['http://open-services.net/ns/cm#relatedArchitectureElement', 'http://open-services.net/ns/am#relatedChangeRequest']
 ]);
 
 function normalizeBaseUrl(url) {
