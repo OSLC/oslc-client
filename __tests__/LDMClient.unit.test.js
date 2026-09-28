@@ -22,7 +22,7 @@ jest.unstable_mockModule('rdflib', () => {
   };
 });
 
-const { default: LDMClient } = await import('../LDMClient.js');
+const { default: LDMClient, INVERSE_LINK_TYPES } = await import('../LDMClient.js');
 const { default: OSLCClient } = await import('../OSLCClient.js');
 
 /**
@@ -204,5 +204,44 @@ describe('OSLCClient.getIncomingLinks', () => {
       inverseLinkType: 'http://open-services.net/ns/rm#implementedBy',
       sourceURL: 'https://server/ccm/wi/1'
     }]);
+  });
+});
+
+describe('INVERSE_LINK_TYPES coverage for CM -> AM links', () => {
+  const REL_ARCH = 'http://open-services.net/ns/cm#relatedArchitectureElement';
+
+  /**
+   * This map doubles as the set of link types queried: discoverIncomingLinks sends
+   * its keys as `linkType`, and LQE answers only "what points here via this
+   * predicate". A predicate missing from it is never asked about, and its incoming
+   * links read as an empty answer indistinguishable from "nothing links here".
+   *
+   * Measured 2026-09-28: two EWM change requests pointed at a BMM Objective and LQE
+   * returned both the moment it was asked with this predicate. The client had not
+   * been asking, because relatedArchitectureElement -- the only link type EWM offers
+   * to an architecture resource -- was missing.
+   */
+  it('includes relatedArchitectureElement, so CM -> AM links get queried', () => {
+    expect([...INVERSE_LINK_TYPES.keys()]).toContain(REL_ARCH);
+  });
+
+  it('maps it to itself, since OSLC declares no inverse term for it', () => {
+    expect(INVERSE_LINK_TYPES.get(REL_ARCH)).toBe(REL_ARCH);
+  });
+
+  /**
+   * An inverse that is not itself a key is never queried, so incoming links in that
+   * direction are invisible -- the same blind spot relatedArchitectureElement had.
+   * Two such orphans exist today and are recorded rather than fixed silently, since
+   * adding them changes what every client asks LQE for. This guards against a third
+   * appearing unnoticed.
+   */
+  it('has only the two known orphan inverses, so no new blind spot creeps in', () => {
+    const keys = new Set(INVERSE_LINK_TYPES.keys());
+    const orphans = [...new Set([...INVERSE_LINK_TYPES.values()])].filter((v) => !keys.has(v)).sort();
+    expect(orphans).toEqual([
+      'http://open-services.net/ns/qm#relatedChangeRequest',
+      'http://open-services.net/ns/rm#validatedBy',
+    ]);
   });
 });

@@ -2,7 +2,16 @@ import * as $rdf from 'rdflib';
 
 const DEFAULT_ACCEPT = 'text/turtle, application/rdf+xml;q=0.9, application/ld+json;q=0.8, application/json;q=0.7';
 
-const INVERSE_LINK_TYPES = new Map([
+/**
+ * Forward predicate -> the predicate that names the reverse direction.
+ *
+ * Exported because it is also **the set of link types queried**: `discoverIncomingLinks`
+ * sends `[...INVERSE_LINK_TYPES.keys()]` as `linkType`, and LQE answers only "what points
+ * here via this predicate". A predicate absent from this map is never asked about, so its
+ * incoming links come back as an empty result that cannot be told apart from "nothing
+ * links here". Tests assert membership for that reason.
+ */
+export const INVERSE_LINK_TYPES = new Map([
   ['http://open-services.net/ns/core#related', 'http://open-services.net/ns/core#related'],
   ['http://open-services.net/ns/rm#constraints', 'http://open-services.net/ns/rm#constrainedBy'],
   ['http://open-services.net/ns/rm#constrainedBy', 'http://open-services.net/ns/rm#constraints'],
@@ -39,7 +48,28 @@ const INVERSE_LINK_TYPES = new Map([
   ['http://open-services.net/ns/cm#affectsPlanItem', 'http://open-services.net/ns/cm#affectedByDefect'],
 
   ['http://jazz.net/ns/rm/navigation#parent', 'http://jazz.net/ns/rm/navigation#children'],
-  ['http://jazz.net/ns/rm/navigation#children', 'http://jazz.net/ns/rm/navigation#parent']
+  ['http://jazz.net/ns/rm/navigation#children', 'http://jazz.net/ns/rm/navigation#parent'],
+
+  // CM -> AM. The only link type EWM offers to an architecture resource, and the
+  // one a change request uses to point at anything in an AM domain -- including a
+  // business motivation or an assessment resource, since those servers declare
+  // oslc_am: as a domain.
+  //
+  // This table is also the set of link types queried: discoverIncomingLinks sends
+  // [...INVERSE_LINK_TYPES.keys()] as `linkType`, and LQE answers "what points here
+  // VIA THIS PREDICATE". So a predicate missing from this table is never asked
+  // about, and its incoming links are invisible -- an empty answer indistinguishable
+  // from "nothing links here". Measured 2026-09-28: LQE held two change requests
+  // pointing at a BMM Objective and returned them immediately once asked with this
+  // predicate; the client had never asked.
+  //
+  // Mapped to itself, as oslc:related is. OSLC declares no inverse term for it: the
+  // predicate lives in the CM namespace while its range is an AM resource, so there
+  // is no `am:elaborates` to point at and inventing one would be worse than the
+  // asymmetry. EWM's own shape labels the reverse direction "Elaborates"; a client
+  // that wants that wording should take it from oslc:inversePropertyLabel where a
+  // server publishes it.
+  ['http://open-services.net/ns/cm#relatedArchitectureElement', 'http://open-services.net/ns/cm#relatedArchitectureElement']
 ]);
 
 function normalizeBaseUrl(url) {
