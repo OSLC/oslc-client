@@ -22,6 +22,11 @@
 export { default as OSLCClient } from './OSLCClient.js';
 export { default } from './OSLCClient.js';
 export { default as LDMClient } from './LDMClient.js';
+// The hard-coded half of the OSLC Linking Profiles "Link Ownership" table, for providers that
+// cannot declare ownership in their own shapes. Clients filter drop targets with it.
+export { INVERSE_LINK_TYPES } from './LDMClient.js';
+// Pure data, no dependencies — importable on its own by clients that want only the table.
+export { LINK_PROFILE, LINK_OWNER_DOMAIN, BUILTIN_INVERSE_LABELS, DOMAIN } from './link-profile.js';
 export { OSLCError, PreconditionFailedError, ConflictError, CredentialRejectedError, oslcErrorFrom } from './errors.js';
 export { default as OSLCResource } from './OSLCResource.js';
 export { default as ServiceProvider } from './ServiceProvider.js';

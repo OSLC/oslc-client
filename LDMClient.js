@@ -11,6 +11,8 @@ const DEFAULT_ACCEPT = 'text/turtle, application/rdf+xml;q=0.9, application/ld+j
  * incoming links come back as an empty result that cannot be told apart from "nothing
  * links here". Tests assert membership for that reason.
  */
+export { DOMAIN, LINK_PROFILE, LINK_OWNER_DOMAIN, BUILTIN_INVERSE_LABELS } from './link-profile.js';
+
 export const INVERSE_LINK_TYPES = new Map([
   ['http://open-services.net/ns/core#related', 'http://open-services.net/ns/core#related'],
   ['http://open-services.net/ns/rm#constraints', 'http://open-services.net/ns/rm#constrainedBy'],
@@ -32,6 +34,29 @@ export const INVERSE_LINK_TYPES = new Map([
   ['http://open-services.net/ns/rm#implementedBy', 'http://open-services.net/ns/cm#implementsRequirement'],
   ['http://open-services.net/ns/rm#trackedBy', 'http://open-services.net/ns/cm#tracksRequirement'],
   ['http://open-services.net/ns/rm#affectedBy', 'http://open-services.net/ns/cm#affectsRequirement'],
+
+  // Architecture Management links. The Link Ownership table gives all six an owner domain of AM
+  // and a secondary predicate of -unspecified-, which is why they map to THEMSELVES as
+  // oslc:core#related does: there is no passive-side predicate to name. DOORS Next renders the
+  // reverse as "Traced By / Satisfied By / Derives Architecture Element" but asserts nothing
+  // for it.
+  //
+  // What the key buys is discovery. This map is also the set of linkType values queried, so
+  // while these were absent an incoming AM link was never asked about and came back as an empty
+  // result indistinguishable from "nothing links here" — which made a correctly stored AM-side
+  // trace invisible from the requirement, and made the wrong direction look like the only one
+  // that worked.
+  //
+  // The reverse LABEL is supplied by the shape, not by this map: genOSLC servers declare
+  // oslc:inversePropertyLabel and the caller prefers it (RN's oslc.service getInverseLabel),
+  // falling back to a label derived from the predicate. DOORS Next declares no such extension,
+  // which is why the label has to come from the AM side at all.
+  ['http://jazz.net/ns/dm/linktypes#trace', 'http://jazz.net/ns/dm/linktypes#trace'],
+  ['http://jazz.net/ns/dm/linktypes#satisfy', 'http://jazz.net/ns/dm/linktypes#satisfy'],
+  ['http://jazz.net/ns/dm/linktypes#refine', 'http://jazz.net/ns/dm/linktypes#refine'],
+  ['http://jazz.net/ns/dm/linktypes#derives', 'http://jazz.net/ns/dm/linktypes#derives'],
+  ['http://jazz.net/ns/dm/linktypes#elaborates', 'http://jazz.net/ns/dm/linktypes#elaborates'],
+  ['http://jazz.net/ns/dm/linktypes#external', 'http://jazz.net/ns/dm/linktypes#external'],
 
   ['http://open-services.net/ns/cm#testedByTestCase', 'http://open-services.net/ns/qm#testsChangeRequest'],
   ['http://open-services.net/ns/qm#testsChangeRequest', 'http://open-services.net/ns/cm#testedByTestCase'],

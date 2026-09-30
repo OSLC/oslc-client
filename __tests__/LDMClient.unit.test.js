@@ -207,6 +207,36 @@ describe('OSLCClient.getIncomingLinks', () => {
   });
 });
 
+describe('INVERSE_LINK_TYPES coverage for AM-owned links', () => {
+  // The six AM rows of the Link Ownership table, oslc-specs/notes/linking-profiles.
+  const AM = 'http://jazz.net/ns/dm/linktypes#';
+  const AM_OWNED = ['derives', 'elaborates', 'external', 'refine', 'satisfy', 'trace'].map(n => AM + n);
+
+  /**
+   * This map doubles as the set of linkType values discoverIncomingLinks asks LQE for, so an
+   * AM-owned predicate missing from it is never asked about and its incoming links read as an
+   * empty answer indistinguishable from "nothing links here". Measured 2026-09-30: that made a
+   * correctly stored AM-side trace invisible from the requirement, so the only direction that
+   * appeared to work in a client was the wrong one.
+   */
+  it.each(AM_OWNED)('queries %s, so incoming AM links are found', (predicate) => {
+    expect([...INVERSE_LINK_TYPES.keys()]).toContain(predicate);
+  });
+
+  /**
+   * The table gives every AM row a secondary predicate of -unspecified-, so they map to
+   * themselves as oslc:core#related does. DOORS Next redundantly declares the SAME predicates
+   * in its own vocabulary -- left over from the Design Manager era, before configuration
+   * management -- so both sides carry one URI and there is no passive name to put here.
+   *
+   * Self-mapping also keeps them out of the reverse-only orphan list below, which is right:
+   * these ARE stored predicates, and a stored predicate must be a key or it goes unqueried.
+   */
+  it.each(AM_OWNED)('maps %s to itself, having no secondary predicate', (predicate) => {
+    expect(INVERSE_LINK_TYPES.get(predicate)).toBe(predicate);
+  });
+});
+
 describe('INVERSE_LINK_TYPES coverage for CM -> AM links', () => {
   const REL_ARCH = 'http://open-services.net/ns/cm#relatedArchitectureElement';
 
