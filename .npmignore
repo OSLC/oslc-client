@@ -10,7 +10,11 @@
 # Consumers need the module graph reachable from index.js, nothing more:
 #   index.js -> OSLCClient.js, LDMClient.js, OSLCResource.js, Compact.js,
 #               RootServices.js, ServiceProvider.js, ServiceProviderCatalog.js,
-#               errors.js, namespaces.js
+#               errors.js, namespaces.js, link-profile.js
+#
+# link-profile.js is the Link Ownership table and imports nothing, so a consumer
+# that wants only the table can take it on its own without pulling in OSLCClient
+# and rdflib. It must ship: Resource Navigator imports it by subpath.
 # README.md, LICENSE.txt and package.json are always included by npm and
 # cannot be excluded here. examples/ and release-notes.md are kept
 # deliberately: they are documentation a consumer reads, and they are small.
