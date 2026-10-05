@@ -1,4 +1,5 @@
 import * as $rdf from 'rdflib';
+import { parseRdf } from './rdf-parse.js';
 
 const DEFAULT_ACCEPT = 'text/turtle, application/rdf+xml;q=0.9, application/ld+json;q=0.8, application/json;q=0.7';
 
@@ -113,7 +114,7 @@ function asUrlString(value, name) {
 function parseRdfTriples({ data, contentType, baseIRI }) {
   const store = $rdf.graph();
   const ct = contentType?.split(';')[0]?.trim() || 'text/turtle';
-  $rdf.parse(data, store, baseIRI, ct);
+  parseRdf(data, store, baseIRI, ct);
   return store.statementsMatching(null, null, null).map(st => ({
     sourceURL: st.subject.value,
     linkType: st.predicate.value,

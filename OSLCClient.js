@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { parseRdf } from './rdf-parse.js';
 import { sym } from 'rdflib';
 import * as $rdf from "rdflib";
 import { rdfs, oslc, oslc_cm1, oslc_rm, oslc_qm1 } from './namespaces.js';
@@ -1051,7 +1052,7 @@ export default class OSLCClient {
         if (genericXml) {
             const graph = $rdf.graph();
             try {
-                $rdf.parse(response.data, graph, url, 'application/rdf+xml');
+                parseRdf(response.data, graph, url, 'application/rdf+xml');
             } catch (err) {
                 // Not RDF after all -- fall through to the XML reading rather
                 // than hand back an empty graph that looks like a resource
@@ -1069,7 +1070,7 @@ export default class OSLCClient {
             // Create a new graph for this resource
             const graph = $rdf.graph();
             try {
-                $rdf.parse(response.data, graph, url, contentType)
+                parseRdf(response.data, graph, url, contentType)
             } catch (err) {
                 console.error(err)
             }                        
@@ -1118,7 +1119,7 @@ export default class OSLCClient {
         const graph = $rdf.graph();
         // contentType is application/x-oslc-compact+xml, but that is RDF/XML specific to OSLC Compact
         try {
-            $rdf.parse(response.data, graph, url, 'application/rdf+xml');
+            parseRdf(response.data, graph, url, 'application/rdf+xml');
         } catch (parseError) {
             // rdflib may fail on RDF/XML with missing namespace declarations (e.g. ETM responses).
             // Fall back to regex-based title extraction from the raw XML.
@@ -1342,7 +1343,7 @@ export default class OSLCClient {
         const contentType = response.headers['content-type'];
         const store = $rdf.graph();
         try {
-            $rdf.parse(response.data, store, url, contentType)
+            parseRdf(response.data, store, url, contentType)
         } catch (err) {
             console.error(err)
         }                                
@@ -1350,7 +1351,7 @@ export default class OSLCClient {
         while (nextPage) {
             response = await this.client.get(nextPage, { headers });
             try {
-                $rdf.parse(response.data, store, url, contentType)
+                parseRdf(response.data, store, url, contentType)
             } catch (err) {
                 console.error(err)
             }                                
@@ -1377,7 +1378,7 @@ export default class OSLCClient {
         const contentType = response.headers['content-type'];
         const store = $rdf.graph();
         try {
-            $rdf.parse(response.data, store, url, contentType)
+            parseRdf(response.data, store, url, contentType)
         } catch (err) {
             console.error(err)
         }                                
